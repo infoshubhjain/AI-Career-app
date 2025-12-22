@@ -7,16 +7,14 @@ export default function Home() {
 
   /**
    * Handles form submission
-   * Logs the user's input to console
-   * Can be extended to route to next page or store data
+   * Logs the user's input - extend this to navigate or process data
    */
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (futureGoal.trim()) {
       console.log("User wants to become:", futureGoal);
-      // Future extension: navigate to next step, store in state management, etc.
-      alert(`Great choice! Let's help you become a ${futureGoal}`);
+      // TODO: Add navigation or API call here
     }
   };
 
