@@ -3,12 +3,30 @@ AI Career App - FastAPI Backend
 Main application entry point
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import settings
-from api import health
-from contextlib import asynccontextmanager
+from app.core.config import settings
+from app.api import health
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan context manager.
+    Handles startup and shutdown logic.
+    """
+    # Startup logic
+    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    print(f"API docs available at: /docs")
+    
+    yield  # App runs here
+    
+    # Shutdown logic
+    print(f"Shutting down {settings.APP_NAME}")
+
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -34,38 +52,6 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup logic
-    print(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    print(f"📚 API docs available at: /docs")
-
-    yield  # App runs here
-
-    # Shutdown logic
-    print(f"👋 Shutting down {settings.APP_NAME}")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Application startup event handler.
-    Initialize connections, load resources, etc.
-    """
-    print(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    print(f"📚 API docs available at: /docs")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Application shutdown event handler.
-    Clean up resources, close connections, etc.
-    """
-    print(f"👋 Shutting down {settings.APP_NAME}")
-
-
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
@@ -78,4 +64,3 @@ async def root():
         "docs": "/docs",
         "health": "/health",
     }
-
