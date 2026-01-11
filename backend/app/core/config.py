@@ -29,11 +29,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
-    
-    # JWT (if using custom auth alongside Supabase)
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    SUPABASE_JWT_SECRET: str = ""  # Found in Supabase Dashboard → Settings → API → JWT Secret
     
     class Config:
         env_file = ".env"

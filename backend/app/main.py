@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api import health
+from app.api import users
 
 
 @asynccontextmanager
@@ -50,6 +51,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+app.include_router(users.router)
 
 
 # Root endpoint

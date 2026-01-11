@@ -1,34 +1,8 @@
 # Backend Documentation
 
-> AI Career App - FastAPI Backend Documentation
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Project Structure](#project-structure)
-- [Configuration](#configuration)
-- [API Endpoints](#api-endpoints)
-- [Core Modules](#core-modules)
-- [Services](#services)
-- [Security](#security)
-- [Supabase Integration](#supabase-integration)
-
----
-
 ## Overview
 
-The backend is built with **FastAPI** and integrates with **Supabase** for database, authentication, and storage. It provides a RESTful API for the AI Career App frontend.
-
-### Tech Stack
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| FastAPI | 0.115.6 | Web framework |
-| Uvicorn | 0.34.0 | ASGI server |
-| Pydantic | 2.10.4 | Data validation |
-| Supabase | 2.10.0 | BaaS (Database, Auth) |
-| Python-Jose | 3.3.0 | JWT handling |
-| Passlib | 1.7.4 | Password hashing |
+FastAPI backend that verifies Supabase JWTs from the frontend. It does not handle login/signup (that's done by Supabase on the frontend) - it only validates tokens and protects API endpoints.
 
 ---
 
@@ -37,365 +11,242 @@ The backend is built with **FastAPI** and integrates with **Supabase** for datab
 ```
 backend/
 ├── app/
-│   ├── __init__.py          # Package init
-│   ├── main.py              # FastAPI application entry
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── config.py        # Settings & environment
-│   │   └── security.py      # Auth utilities
-│   ├── api/
-│   │   ├── __init__.py
-│   │   └── health.py        # Health check routes
-│   └── services/
-│       └── __init__.py      # Business logic (placeholder)
-├── requirements.txt         # Python dependencies
-├── .env                     # Environment variables
-└── README.md
+│   ├── api/                     # API route handlers
+│   │   ├── health.py            # Health check endpoints
+│   │   └── users.py             # Protected user endpoints
+│   ├── core/                    # Core utilities
+│   │   ├── config.py            # Environment configuration
+│   │   ├── auth.py              # JWT verification & dependencies
+│   │   └── security.py          # Password hashing (if needed)
+│   ├── services/                # Business logic (placeholder)
+│   └── main.py                  # FastAPI application entry
+├── .env                         # Environment variables
+├── .env.example                 # Environment template
+└── requirements.txt             # Python dependencies
 ```
 
 ---
 
-## Configuration
+## Folder Descriptions
 
-### Settings Class
+| Folder | Purpose |
+|--------|---------|
+| `app/api/` | HTTP route handlers (endpoints) |
+| `app/core/` | Configuration, authentication, security utilities |
+| `app/services/` | Business logic and external integrations (placeholder) |
 
-**File:** `app/core/config.py`
+---
 
-Settings are managed via Pydantic's `BaseSettings`, automatically loading from environment variables and `.env` file.
+## Authentication System
 
-```python
-from app.core.config import settings
+### How It Works
 
-# Access settings
-print(settings.APP_NAME)
-print(settings.SUPABASE_URL)
+```
+Frontend                          Backend
+────────                          ───────
+User logs in via Supabase    
+         │
+         ▼
+JWT stored in session        
+         │
+         ▼
+API request with header:     ───▶  Extract token from
+Authorization: Bearer <JWT>        Authorization header
+                                          │
+                                          ▼
+                                   Verify JWT using
+                                   SUPABASE_JWT_SECRET
+                                          │
+                                          ▼
+                                   Extract user_id, email
+                                   from token payload
+                                          │
+                                          ▼
+                                   Process request with
+                                   user context
 ```
 
-### Environment Variables
+### Tangible Use Cases
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `APP_NAME` | str | "AI Career App" | Application name |
-| `APP_VERSION` | str | "1.0.0" | Application version |
-| `DEBUG` | bool | False | Debug mode |
-| `HOST` | str | "0.0.0.0" | Server host |
-| `PORT` | int | 8000 | Server port |
-| `CORS_ORIGINS` | List[str] | ["http://localhost:3000"] | Allowed origins |
-| `SUPABASE_URL` | str | "" | Supabase project URL |
-| `SUPABASE_ANON_KEY` | str | "" | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | str | "" | Supabase service key |
-| `JWT_SECRET_KEY` | str | - | JWT signing secret |
-| `JWT_ALGORITHM` | str | "HS256" | JWT algorithm |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | int | 30 | Token expiry |
+| Use Case | How It Works |
+|----------|--------------|
+| **Personalized Data** | Use `user.id` to fetch/store user-specific data |
+| **User Profiles** | Create a `profiles` table linked to `user.id` |
+| **Authorization** | Check user role/permissions before actions |
+| **Audit Logging** | Log who performed what action |
+| **Rate Limiting** | Apply per-user rate limits |
 
-### Cached Settings
+### Example: Storing User-Specific Data
 
 ```python
-from app.core.config import get_settings
+from app.core.auth import get_current_user, CurrentUser
 
-# Uses lru_cache - reads .env only once
-settings = get_settings()
+@router.post("/career-goals")
+async def save_career_goal(
+    goal: str,
+    user: CurrentUser = Depends(get_current_user)
+):
+    # user.id is the Supabase user UUID
+    # Save goal to database with user.id as foreign key
+    await db.execute(
+        "INSERT INTO career_goals (user_id, goal) VALUES ($1, $2)",
+        user.id, goal
+    )
+    return {"status": "saved"}
 ```
+
+---
+
+## Key Files
+
+### `core/auth.py` - Authentication
+
+| Function | Purpose |
+|----------|---------|
+| `verify_supabase_token(token)` | Decode and validate JWT |
+| `get_current_user` | Dependency for protected routes (401 if invalid) |
+| `get_optional_user` | Dependency for optional auth (returns None if no token) |
+
+### `core/config.py` - Configuration
+
+Loads settings from environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_ANON_KEY` | Public anon key |
+| `SUPABASE_JWT_SECRET` | **Required for auth** - JWT signing secret |
+| `CORS_ORIGINS` | Allowed frontend URLs |
 
 ---
 
 ## API Endpoints
 
-### Root
+### Public Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | API information |
-
-**Response:**
-```json
-{
-  "app": "AI Career App",
-  "version": "1.0.0",
-  "docs": "/docs",
-  "health": "/health"
-}
-```
-
----
-
-### Health Check
-
-**File:** `app/api/health.py`
-
-#### Basic Health
-
-| Method | Path | Description |
-|--------|------|-------------|
+| GET | `/` | API info |
 | GET | `/health` | Basic health check |
+| GET | `/health/detailed` | Detailed health with services |
+| GET | `/users/check` | Check auth status (works without token) |
 
-**Response Model:**
-```python
-class HealthResponse(BaseModel):
-    status: str        # "healthy" | "unhealthy"
-    timestamp: str     # ISO format timestamp
-    version: str       # App version
-    app_name: str      # App name
-```
-
-**Example Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-12-22T10:30:00.000000",
-  "version": "1.0.0",
-  "app_name": "AI Career App"
-}
-```
-
----
-
-#### Detailed Health
+### Protected Endpoints (Require JWT)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health/detailed` | Health check with service status |
+| GET | `/users/me` | Get current user's profile |
 
-**Response Model:**
+---
+
+## Creating Protected Endpoints
+
 ```python
-class DetailedHealthResponse(HealthResponse):
-    services: dict     # Service connectivity status
-```
+from fastapi import APIRouter, Depends
+from app.core.auth import get_current_user, CurrentUser
 
-**Example Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-12-22T10:30:00.000000",
-  "version": "1.0.0",
-  "app_name": "AI Career App",
-  "services": {
-    "supabase": {
-      "status": "healthy",
-      "message": "Credentials configured"
+router = APIRouter()
+
+# Requires valid JWT - returns 401 if missing/invalid
+@router.get("/protected")
+async def protected_route(user: CurrentUser = Depends(get_current_user)):
+    return {
+        "user_id": user.id,
+        "email": user.email
     }
-  }
-}
+
+# Optional auth - works with or without token
+@router.get("/public")
+async def public_route(user: CurrentUser | None = Depends(get_optional_user)):
+    if user:
+        return {"message": f"Hello, {user.email}"}
+    return {"message": "Hello, guest"}
 ```
 
 ---
 
-## Core Modules
+## Environment Setup
 
-### config.py
+### Required API Key
 
-Provides application configuration via environment variables.
-
-**Functions:**
-
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `get_settings()` | `Settings` | Cached settings instance |
-
-**Usage:**
-```python
-from app.core.config import settings
-
-# Direct access
-api_url = settings.SUPABASE_URL
-
-# Or via function (same result, cached)
-from app.core.config import get_settings
-settings = get_settings()
-```
-
----
-
-### security.py
-
-Authentication and security utilities.
-
-**Functions:**
-
-| Function | Parameters | Returns | Description |
-|----------|------------|---------|-------------|
-| `verify_password` | `plain_password`, `hashed_password` | `bool` | Verify password |
-| `hash_password` | `password` | `str` | Hash a password |
-| `create_access_token` | `data`, `expires_delta?` | `str` | Create JWT token |
-| `decode_access_token` | `token` | `dict \| None` | Decode JWT token |
-
-**Examples:**
-
-```python
-from app.core.security import (
-    hash_password,
-    verify_password,
-    create_access_token,
-    decode_access_token,
-)
-
-# Hash a password
-hashed = hash_password("mypassword123")
-
-# Verify password
-is_valid = verify_password("mypassword123", hashed)  # True
-
-# Create JWT token
-token = create_access_token({"sub": "user_id_123"})
-
-# Decode token
-payload = decode_access_token(token)
-# {"sub": "user_id_123", "exp": 1703234567}
-```
-
----
-
-## Services
-
-**Directory:** `app/services/`
-
-The services module is a placeholder for business logic. As the application grows, add service classes here.
-
-**Recommended Structure:**
-```
-services/
-├── __init__.py
-├── supabase.py      # Supabase client initialization
-├── user.py          # User-related operations
-├── career.py        # Career path operations
-└── ai.py            # AI/ML integrations
-```
-
-**Example Service Pattern:**
-```python
-# app/services/user.py
-from supabase import Client
-
-class UserService:
-    def __init__(self, client: Client):
-        self.client = client
-    
-    async def get_user(self, user_id: str):
-        response = self.client.table("users").select("*").eq("id", user_id).execute()
-        return response.data[0] if response.data else None
-```
-
----
-
-## Security
-
-### Password Hashing
-
-Uses bcrypt via `passlib`:
-
-```python
-from app.core.security import hash_password, verify_password
-
-# Store hashed password
-hashed = hash_password("user_password")
-
-# Verify on login
-if verify_password(input_password, stored_hash):
-    # Password correct
-```
-
-### JWT Tokens
-
-Uses `python-jose` for JWT operations:
-
-```python
-from datetime import timedelta
-from app.core.security import create_access_token, decode_access_token
-
-# Create token with custom expiry
-token = create_access_token(
-    data={"sub": user_id, "role": "user"},
-    expires_delta=timedelta(hours=24)
-)
-
-# Decode and validate
-payload = decode_access_token(token)
-if payload:
-    user_id = payload.get("sub")
-```
-
----
-
-## Supabase Integration
-
-### Setup
-
-1. Create a project at [supabase.com](https://supabase.com)
-2. Get your credentials from Project Settings → API
-3. Add to `.env`:
+You need to add **one new key** to your backend `.env`:
 
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_JWT_SECRET=your-jwt-secret-here
 ```
 
-### Client Initialization (To Be Implemented)
+**Where to find it:**
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
+2. Select your project
+3. Go to **Settings** → **API**
+4. Copy the **JWT Secret** (under "JWT Settings")
 
-```python
-# app/services/supabase.py
-from supabase import create_client, Client
-from app.core.config import settings
+### Full `.env` Example
 
-def get_supabase_client() -> Client:
-    return create_client(
-        settings.SUPABASE_URL,
-        settings.SUPABASE_ANON_KEY
-    )
+```env
+# Application
+APP_NAME="AI Career App"
+DEBUG=true
 
-supabase = get_supabase_client()
-```
+# CORS
+CORS_ORIGINS=["http://localhost:3000"]
 
-### Common Operations
-
-```python
-# Insert
-response = supabase.table("users").insert({"email": "user@example.com"}).execute()
-
-# Select
-response = supabase.table("users").select("*").eq("id", user_id).execute()
-
-# Update
-response = supabase.table("users").update({"name": "New Name"}).eq("id", user_id).execute()
-
-# Delete
-response = supabase.table("users").delete().eq("id", user_id).execute()
+# Supabase (from Dashboard → Settings → API)
+SUPABASE_URL=https://ghigujejhlfsxpavvjvg.supabase.co
+SUPABASE_ANON_KEY=eyJhbGc...
+SUPABASE_JWT_SECRET=your-jwt-secret-here
 ```
 
 ---
 
-## Running the Server
+## Testing the Auth Flow
 
-### Development
+### 1. Start the backend
+```bash
+cd backend
+python -m uvicorn app.main:app --reload
+```
+
+### 2. Test without token (should fail)
+```bash
+curl http://localhost:8000/users/me
+# Returns: 403 Forbidden (no credentials)
+```
+
+### 3. Test with token from frontend
+After logging in on the frontend, the JWT is automatically attached.
+Or manually test:
+```bash
+curl -H "Authorization: Bearer YOUR_JWT_TOKEN" http://localhost:8000/users/me
+# Returns: {"id": "uuid", "email": "user@example.com", "message": "..."}
+```
+
+### 4. Check auth status (works either way)
+```bash
+curl http://localhost:8000/users/check
+# Returns: {"authenticated": false, ...}
+
+curl -H "Authorization: Bearer TOKEN" http://localhost:8000/users/check
+# Returns: {"authenticated": true, "user_id": "...", "email": "..."}
+```
+
+---
+
+## Running the Backend
 
 ```bash
 cd backend
-python -m venv venv
-venv\Scripts\activate  # Windows
-source venv/bin/activate  # macOS/Linux
-
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
-### Production
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
+API docs available at: http://localhost:8000/docs
 
 ---
 
-## API Documentation
+## Configuration Checklist
 
-When the server is running:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **OpenAPI JSON**: http://localhost:8000/openapi.json
-
----
-
-*Last updated: December 2024*
-
-
+- [ ] Set `SUPABASE_JWT_SECRET` in `.env`
+- [ ] Set `SUPABASE_URL` in `.env`  
+- [ ] Set `CORS_ORIGINS` to include your frontend URL
+- [ ] Install dependencies: `pip install -r requirements.txt`
