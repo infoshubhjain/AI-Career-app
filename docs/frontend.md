@@ -1,31 +1,8 @@
 # Frontend Documentation
 
-> AI Career App - Next.js Frontend Documentation
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Project Structure](#project-structure)
-- [Routes](#routes)
-- [Components](#components)
-- [Styling](#styling)
-- [Error Handling](#error-handling)
-
----
-
 ## Overview
 
-The frontend is built with **Next.js 15** using the App Router, **React 18**, **TypeScript**, and **Tailwind CSS**. It provides a career learning path application where users can select career goals and track their learning progress.
-
-### Tech Stack
-
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Next.js | 15.1.0 | React framework with App Router |
-| React | 18.3.1 | UI library |
-| TypeScript | 5.7.2 | Type safety |
-| Tailwind CSS | 3.4.17 | Utility-first CSS |
-| PostCSS | 8.4.49 | CSS processing |
+Next.js 15 application with Supabase authentication. Users sign up/login via email+password, and the JWT token is automatically attached to API requests for FastAPI backend authorization.
 
 ---
 
@@ -34,307 +11,227 @@ The frontend is built with **Next.js 15** using the App Router, **React 18**, **
 ```
 frontend/
 ├── app/
-│   ├── components/          # Reusable UI components
-│   │   └── ui/
+│   ├── auth/                    # Authentication pages
+│   │   ├── login/page.tsx       # Login page
+│   │   ├── signup/page.tsx      # Signup page
+│   │   └── callback/page.tsx    # Email verification handler
+│   ├── components/
+│   │   ├── auth/                # Auth-related components
+│   │   │   ├── LoginForm.tsx    # Login form with validation
+│   │   │   └── SignupForm.tsx   # Signup form with validation
+│   │   └── ui/                  # Reusable UI components
 │   │       ├── Button.tsx
 │   │       ├── Card.tsx
-│   │       ├── Input.tsx
-│   │       └── index.ts
-│   ├── globals.css          # Global styles & CSS variables
-│   ├── layout.tsx           # Root layout
-│   ├── page.tsx             # Home page
-│   ├── loading.tsx          # Global loading state
-│   ├── error.tsx            # Global error boundary
-│   └── not-found.tsx        # 404 page
-├── package.json
-├── tailwind.config.ts
-├── tsconfig.json
-└── next.config.ts
+│   │       └── Input.tsx
+│   ├── context/
+│   │   └── AuthContext.tsx      # Global auth state provider
+│   ├── lib/
+│   │   ├── supabase.ts          # Supabase client initialization
+│   │   ├── auth.ts              # Auth functions (signUp, signIn, signOut)
+│   │   └── api.ts               # API client with JWT attachment
+│   ├── layout.tsx               # Root layout with AuthProvider
+│   ├── page.tsx                 # Home page
+│   ├── globals.css              # Global styles
+│   ├── loading.tsx              # Loading state
+│   ├── error.tsx                # Error boundary
+│   └── not-found.tsx            # 404 page
+├── .env.local                   # Environment variables
+└── package.json
+```
+
+---
+
+## Folder Descriptions
+
+| Folder | Purpose |
+|--------|---------|
+| `app/auth/` | Authentication flow pages (login, signup, email verification) |
+| `app/components/auth/` | Auth form components with validation and error handling |
+| `app/components/ui/` | Reusable UI primitives (Button, Card, Input) |
+| `app/context/` | React context providers for global state |
+| `app/lib/` | Utility modules (Supabase client, auth service, API client) |
+
+---
+
+## Authentication System
+
+### How It Works
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  User        │───▶│  Supabase    │───▶│  Session     │
+│  signs up    │    │  Auth API    │    │  created     │
+└──────────────┘    └──────────────┘    └──────────────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │ Verification │
+                    │ email sent   │
+                    └──────────────┘
+                           │
+                           ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  User clicks │───▶│  /auth/      │───▶│  Redirect to │
+│  email link  │    │  callback    │    │  /auth/login │
+└──────────────┘    └──────────────┘    └──────────────┘
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `lib/supabase.ts` | Initializes Supabase client with env variables |
+| `lib/auth.ts` | `signUp()`, `signIn()`, `signOut()`, `getAccessToken()` |
+| `lib/api.ts` | Fetch wrapper that attaches JWT to requests |
+| `context/AuthContext.tsx` | Provides `useAuth()` hook for components |
+
+### Using Authentication in Components
+
+```typescript
+import { useAuth } from "@/app/context/AuthContext";
+
+function MyComponent() {
+  const { user, isAuthenticated, isLoading, signOut } = useAuth();
+  
+  if (isLoading) return <Spinner />;
+  if (!isAuthenticated) return <LoginPrompt />;
+  
+  return <div>Welcome, {user.email}</div>;
+}
+```
+
+### Making Authenticated API Calls
+
+```typescript
+import { api } from "@/app/lib/api";
+
+// JWT is automatically attached as Authorization: Bearer <token>
+const { data, error } = await api.get("/api/protected-endpoint");
+const { data, error } = await api.post("/api/items", { name: "Item" });
+```
+
+---
+
+## Supabase Integration
+
+### Environment Variables
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+### Users Table in Supabase
+
+Supabase Auth automatically manages users in the `auth.users` table. This table is in a protected schema and contains:
+
+| Column | Description |
+|--------|-------------|
+| `id` | UUID - unique user identifier |
+| `email` | User's email address |
+| `created_at` | Account creation timestamp |
+| `email_confirmed_at` | When email was verified (null if not verified) |
+| `last_sign_in_at` | Last login timestamp |
+
+### Accessing Users in Supabase Dashboard
+
+1. **View Users**: Dashboard → Authentication → Users
+2. **User Details**: Click any user to see their metadata
+3. **Delete User**: Click user → Delete (in dropdown menu)
+4. **Invite User**: Users tab → Invite user button
+
+### Querying Users via SQL Editor
+
+```sql
+-- View all users
+SELECT id, email, created_at, email_confirmed_at 
+FROM auth.users;
+
+-- Find specific user
+SELECT * FROM auth.users WHERE email = 'user@example.com';
+
+-- Count users
+SELECT COUNT(*) FROM auth.users;
+```
+
+### Creating a Custom Users Profile Table
+
+To store additional user data, create a `public.profiles` table:
+
+```sql
+-- Create profiles table
+CREATE TABLE public.profiles (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  full_name TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Users can only read/update their own profile
+CREATE POLICY "Users can view own profile" 
+  ON public.profiles FOR SELECT 
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" 
+  ON public.profiles FOR UPDATE 
+  USING (auth.uid() = id);
+```
+
+### Interacting with Users from Your App
+
+```typescript
+import { supabase } from "@/app/lib/supabase";
+
+// Get current user
+const { data: { user } } = await supabase.auth.getUser();
+
+// Get user's profile (if you created profiles table)
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("*")
+  .eq("id", user.id)
+  .single();
+
+// Update profile
+await supabase
+  .from("profiles")
+  .update({ full_name: "New Name" })
+  .eq("id", user.id);
 ```
 
 ---
 
 ## Routes
 
-### Home Page
-
-| Property | Value |
-|----------|-------|
-| **Path** | `/` |
-| **File** | `app/page.tsx` |
-| **Type** | Client Component |
-
-**Description:**  
-Landing page where users enter their desired career goal.
-
-**Features:**
-- Text input for career goal entry
-- Form validation (disables submit when empty)
-- Console logging on submit (extend for navigation/API calls)
-
-**State:**
-```typescript
-const [futureGoal, setFutureGoal] = useState("");
-```
+| Route | Auth Required | Description |
+|-------|---------------|-------------|
+| `/` | No | Home page, shows auth status |
+| `/auth/login` | No | Login form |
+| `/auth/signup` | No | Signup form |
+| `/auth/callback` | No | Email verification handler |
 
 ---
 
-## Components
+## Running Locally
 
-All UI components are located in `app/components/ui/` and exported via `index.ts`.
-
-### Button
-
-**File:** `app/components/ui/Button.tsx`
-
-**Import:**
-```typescript
-import { Button } from "@/app/components/ui";
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-**Props:**
-```typescript
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost";
-  size?: "sm" | "md" | "lg";
-  isLoading?: boolean;
-}
-```
-
-**Variants:**
-| Variant | Description |
-|---------|-------------|
-| `primary` | Dark background, light text (default) |
-| `secondary` | Light background, dark text |
-| `outline` | Bordered, transparent background |
-| `ghost` | No background, text only |
-
-**Sizes:**
-| Size | Padding |
-|------|---------|
-| `sm` | `px-3 py-1.5` |
-| `md` | `px-4 py-2` (default) |
-| `lg` | `px-6 py-3` |
-
-**Usage:**
-```tsx
-<Button variant="primary" size="lg" isLoading={false}>
-  Click Me
-</Button>
-```
+Requires `.env.local` with Supabase credentials.
 
 ---
 
-### Input
+## Configuration Checklist
 
-**File:** `app/components/ui/Input.tsx`
+- [ ] Set `NEXT_PUBLIC_SUPABASE_URL` in `.env.local`
+- [ ] Set `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`
+- [ ] Add `http://localhost:3000/auth/callback` to Supabase Redirect URLs
+- [ ] Enable Email provider in Supabase Authentication settings
 
-**Import:**
-```typescript
-import { Input } from "@/app/components/ui";
-```
-
-**Props:**
-```typescript
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-  error?: string;
-  helperText?: string;
-}
-```
-
-**Features:**
-- Auto-generated ID from label
-- Error state styling
-- Helper text support
-- Full accessibility support
-
-**Usage:**
-```tsx
-<Input
-  label="Email"
-  type="email"
-  placeholder="Enter your email"
-  error="Invalid email address"
-/>
-```
-
----
-
-### Card
-
-**File:** `app/components/ui/Card.tsx`
-
-**Import:**
-```typescript
-import { 
-  Card, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription, 
-  CardContent, 
-  CardFooter 
-} from "@/app/components/ui";
-```
-
-**Card Props:**
-```typescript
-interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "bordered" | "elevated";
-}
-```
-
-**Variants:**
-| Variant | Description |
-|---------|-------------|
-| `default` | Plain white/dark background |
-| `bordered` | With border |
-| `elevated` | With shadow |
-
-**Subcomponents:**
-| Component | Purpose |
-|-----------|---------|
-| `CardHeader` | Container for title and description |
-| `CardTitle` | Card heading (h3) |
-| `CardDescription` | Muted description text |
-| `CardContent` | Main content area |
-| `CardFooter` | Footer with actions |
-
-**Usage:**
-```tsx
-<Card variant="bordered">
-  <CardHeader>
-    <CardTitle>Card Title</CardTitle>
-    <CardDescription>Card description here</CardDescription>
-  </CardHeader>
-  <CardContent>
-    Main content goes here
-  </CardContent>
-  <CardFooter>
-    <Button>Action</Button>
-  </CardFooter>
-</Card>
-```
-
----
-
-## Styling
-
-### CSS Variables
-
-Defined in `app/globals.css`:
-
-```css
-:root {
-  --background: #fafafa;
-  --foreground: #0a0a0a;
-  --muted: #737373;
-  --muted-foreground: #a3a3a3;
-  --border: #e5e5e5;
-  --ring: #0a0a0a;
-  --primary: #0a0a0a;
-  --primary-foreground: #fafafa;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #0a0a0a;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --info: #3b82f6;
-}
-```
-
-Dark mode variables are automatically applied via `@media (prefers-color-scheme: dark)`.
-
----
-
-### Animation Classes
-
-| Class | Effect |
-|-------|--------|
-| `animate-fade-in` | Fade in |
-| `animate-fade-in-up` | Fade in from below |
-| `animate-fade-in-down` | Fade in from above |
-| `animate-slide-in-left` | Slide in from left |
-| `animate-slide-in-right` | Slide in from right |
-| `animate-scale-in` | Scale in |
-| `animate-shimmer` | Loading shimmer effect |
-
-**Animation Delays:**
-| Class | Delay |
-|-------|-------|
-| `animation-delay-100` | 100ms |
-| `animation-delay-200` | 200ms |
-| `animation-delay-300` | 300ms |
-| `animation-delay-400` | 400ms |
-| `animation-delay-500` | 500ms |
-
----
-
-## Error Handling
-
-### Global Error Boundary
-
-**File:** `app/error.tsx`
-
-Catches runtime errors in the application and displays a user-friendly error page.
-
-**Props:**
-```typescript
-interface ErrorProps {
-  error: Error & { digest?: string };
-  reset: () => void;
-}
-```
-
-**Features:**
-- Error icon and message
-- "Try again" button (calls `reset()`)
-- "Go home" button
-- Shows error details in development mode
-
----
-
-### Global Loading State
-
-**File:** `app/loading.tsx`
-
-Displays a centered loading spinner with "Loading..." text.
-
----
-
-### 404 Not Found
-
-**File:** `app/not-found.tsx`
-
-Custom 404 page with:
-- Large "404" text
-- "Page not found" message
-- "Back to home" button
-
----
-
-## Scripts
-
-Run from the `frontend/` directory:
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
-
----
-
-## Environment Variables
-
-Currently no environment variables are required. Future integrations may require:
-
-```env
-# .env.local (example)
-NEXT_PUBLIC_API_URL=http://localhost:3001/api
-```
-
----
-
-*Last updated: December 2024*
