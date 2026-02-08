@@ -1,138 +1,100 @@
-# AI Career App
+# AI Career Tutor 🚀
 
-A modern career guidance application built with Next.js, React, and Tailwind CSS. The app helps users define their career goals and provides personalized learning paths based on AI-powered recommendations.
+> **People don’t fail because they lack information. They fail because the information is overwhelming.**
 
-## Landing Page
+AI Career Tutor is a personalized, task-first career mentor designed to simplify the path to your dream job. Instead of dumping a giant, overwhelming roadmap, it reveals only the **next micro-step**, helping you stay focused and achieve consistent progress.
 
-The entry point features a minimal, centered landing page where users can define what they want to become or what skill they want to learn.
+---
 
-## Features
+## ✨ The Vision
 
-- **Fully responsive** - Works seamlessly on mobile and desktop
-- **Modern design** - Clean, neutral aesthetic with dark mode support
-- **Accessible** - Semantic HTML with proper ARIA labels
-- **Type-safe** - Built with TypeScript
-- **Fast** - Optimized with Next.js App Router
-- **Minimal dependencies** - Only essential packages included
+Traditional roadmaps create paralysis. AI Career Tutor turns the roadmap into a conversation:
 
-## Tech Stack
+- **100-step plan, 1 step visible**: We build the entire roadmap behind the scenes but only surface what you need to do *right now*.
+- **Dynamic Adaptation**: The AI gauges your level through chat and quizzes, adjusting the roadmap as you learn.
+- **Personal Career Coach**: Not just a checklist, but an active mentor that asks questions, validates your knowledge, and keeps you engaged.
+- **Gamified Progress**: XP, streaks, and badges to turn career building into an addictive journey.
 
-- **Next.js 15** - React framework with App Router
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Tailwind CSS 3** - Utility-first CSS framework
+---
 
-## Getting Started
+## 🏗️ How It Works
+
+The system is built on a modern, scalable architecture:
+
+1.  **Skill Representation Layer**: A dynamic knowledge graph that tracks prerequisites and dependencies.
+2.  **Learner Model**: A probabilistic estimate of your mastery over each skill node.
+3.  **Assessment Engine**: AI-generated quizzes and challenges that produce real signals of competence.
+4.  **Recommendation Engine**: An LLM-powered tutor that chooses the highest-leverage next micro-task based on your current level.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Next.js 15 (App Router), React 18, Tailwind CSS, Lucide Icons.
+- **Backend**: Supabase (PostgreSQL, Auth, RLS).
+- **Authentication**: Google OAuth via Supabase.
+- **AI Integration**: Custom API routes layer supporting OpenAI, Gemini, or local models.
+- **State Management**: Zustand & React Context.
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ installed on your machine
-- npm, yarn, or pnpm package manager
+- Node.js 18+
+- A Supabase project
 
 ### Installation
 
-1. Navigate to the project directory:
-```bash
-cd AI-Career-app
-```
+1.  Navigate to the `frontend` directory:
+    ```bash
+    cd frontend
+    ```
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Set up your environment variables in `.env.local`:
+    ```env
+    NEXT_PUBLIC_SUPABASE_URL=your_project_url
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+    ```
+4.  Run the development server:
+    ```bash
+    npm run dev
+    ```
 
-2. Install dependencies:
-```bash
-npm install
-# or
-yarn install
-# or
-pnpm install
-```
+### Database Setup
 
-### Running the Development Server
+Run the initial schema migration in your Supabase SQL editor located at `/supabase/migrations/001_initial_schema.sql`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to see the landing page.
+## 📈 Current Status & Roadmap
 
-### Building for Production
+### ✅ Implemented
+- [x] Modern Landing Page for goal setting.
+- [x] Chat interface with real-time feedback.
+- [x] Supabase & Google OAuth integration.
+- [x] AI Prompting framework for career coaching.
+- [x] Dynamic navigation from goal to tutor.
 
-```bash
-npm run build
-npm run start
-# or
-yarn build
-yarn start
-# or
-pnpm build
-pnpm start
-```
+### 🚧 In Progress
+- [ ] Live LLM integration (OpenAI/Gemini).
+- [ ] Dynamic roadmap generation & visualization.
+- [ ] AI-powered skill assessments (quizzes).
+- [ ] Progress tracking & XP system.
 
-## Project Structure
+---
 
-```
-AI-Career-app/
-├── app/
-│   ├── layout.tsx          # Root layout with metadata
-│   ├── page.tsx            # Main landing page component
-│   └── globals.css         # Global styles and Tailwind imports
-├── public/                 # Static assets (add images, fonts here)
-├── next.config.ts          # Next.js configuration
-├── tailwind.config.ts      # Tailwind CSS configuration
-├── tsconfig.json           # TypeScript configuration
-├── postcss.config.mjs      # PostCSS configuration
-└── package.json            # Project dependencies
-```
+## 👥 Target Users
+- Students picking careers.
+- Self-taught coders.
+- Professionals switching fields into Tech, AI, or Finance.
+- Anyone feeling lost in the sea of online information.
 
-## Customization
+---
 
-### Changing Colors
-
-Edit [tailwind.config.ts](tailwind.config.ts) to customize the color palette or modify CSS variables in [app/globals.css](app/globals.css).
-
-### Modifying Content
-
-Edit [app/page.tsx](app/page.tsx) to change:
-- Headline text
-- Placeholder examples
-- Button text
-- Form behavior
-
-### Adding Functionality
-
-The `handleSubmit` function in [app/page.tsx](app/page.tsx) currently logs to console and shows an alert. Extend it to:
-- Navigate to a new page using Next.js router
-- Send data to an API endpoint
-- Store in state management (Redux, Zustand, etc.)
-- Save to local storage
-
-## Design Decisions
-
-- **System fonts** - Using native font stack for optimal performance
-- **Minimal Tailwind** - Only essential utilities, no custom plugins
-- **No external dependencies** - No UI component libraries
-- **Semantic HTML** - Proper use of main, form, h1, p tags
-- **Focus states** - Clear visual feedback for keyboard navigation
-- **High contrast** - WCAG AA compliant color combinations
-
-## Browser Support
-
-- Chrome (latest)
-- Firefox (latest)
-- Safari (latest)
-- Edge (latest)
-
-## Future Extensions
-
-Planned features for the AI Career App:
-
-- AI-powered career path recommendations
-- Multi-step onboarding flow with skill assessment
-- Personalized learning roadmaps
-- Integration with learning platforms and resources
-- Progress tracking and goal setting
-- Community features and mentorship connections
-- Resume builder and job matching
-- Analytics and insights dashboard
+## 🔮 The Magic Feature: "Personal Career Mode"
+Every time you chat, the AI updates your strengths, weaknesses, and skill gaps behind the scenes. It’s not just a chat; it’s a continuous, evolving career coaching session that remembers your history and milestones.

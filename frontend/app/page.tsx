@@ -1,29 +1,59 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { LogIn, LogOut } from "lucide-react";
 
 export default function Home() {
   const [futureGoal, setFutureGoal] = useState("");
+  const router = useRouter();
+  const { user, signInWithGoogle, signOut, loading } = useAuth();
 
   /**
    * Handles form submission
-   * Logs the user's input to console
-   * Can be extended to route to next page or store data
+   * Navigates to chat page with the goal
    */
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (futureGoal.trim()) {
-      console.log("User wants to become:", futureGoal);
-      // Future extension: navigate to next step, store in state management, etc.
-      alert(`Great choice! Let's help you become a ${futureGoal}`);
+      // Store goal in session storage to be picked up by the chat page
+      sessionStorage.setItem("career_goal", futureGoal);
+      router.push("/chat");
     }
   };
 
   return (
-    <main className="min-h-screen w-full flex items-center justify-center px-4 py-8">
+    <main className="min-h-screen w-full flex flex-col items-center justify-center px-4 py-8 relative">
+      {/* Auth UI */}
+      <div className="absolute top-8 right-8">
+        {loading ? (
+          <div className="w-8 h-8 animate-pulse bg-neutral-200 dark:bg-neutral-800 rounded-full" />
+        ) : user ? (
+          <div className="flex items-center space-x-4">
+            <span className="text-sm font-medium hidden sm:inline">{user.email}</span>
+            <button
+              onClick={() => signOut()}
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-full bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => signInWithGoogle()}
+            className="flex items-center space-x-2 px-6 py-3 text-sm font-semibold rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:opacity-90 transition-all shadow-lg"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Sign In with Google</span>
+          </button>
+        )}
+      </div>
+
       {/* Main centered container */}
-      <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-8">
+      <div className="w-full max-w-2xl flex flex-col items-center text-center space-y-8 mt-12">
 
         {/* Headline section */}
         <div className="space-y-3">
@@ -31,7 +61,7 @@ export default function Home() {
             What do you want to become?
           </h1>
           <p className="text-lg sm:text-xl text-neutral-600 dark:text-neutral-400 text-balance">
-            Choose your path and start your learning journey today
+            Choose your path and start your learning journey tonight
           </p>
         </div>
 
@@ -60,7 +90,7 @@ export default function Home() {
 
         {/* Optional helper text */}
         <p className="text-sm text-neutral-500 dark:text-neutral-500 max-w-md">
-          Tell us what you want to learn, and we'll help you get there
+          {user ? "Ready to level up your career?" : "Sign in to save your roadmap and track progress"}
         </p>
       </div>
     </main>
