@@ -3,7 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { LogIn, LogOut, Rocket, Brain, Target } from "lucide-react";
+import { LogIn, LogOut, Rocket, Brain, Target, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Home() {
@@ -20,36 +20,47 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen w-full flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden bg-neutral-50 dark:bg-neutral-950">
-      {/* Background Decorative Elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[120px] rounded-full" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
+    <main className="min-h-screen w-full flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden bg-gradient-to-br from-neutral-50 via-blue-50/30 to-purple-50/20 dark:from-neutral-950 dark:via-blue-950/20 dark:to-purple-950/10">
+      {/* Enhanced Background Decorative Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-[120px] rounded-full animate-float" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-gradient-to-tl from-purple-500/20 to-blue-500/20 blur-[120px] rounded-full animate-float" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-gradient-to-br from-blue-400/10 to-purple-400/10 blur-[100px] rounded-full" />
+      </div>
 
       {/* Auth UI */}
-      <div className="absolute top-8 right-8 z-20">
+      <div className="absolute top-6 sm:top-8 right-4 sm:right-8 z-20">
         {loading ? (
-          <div className="w-8 h-8 animate-pulse bg-neutral-200 dark:bg-neutral-800 rounded-full" />
+          <div className="w-10 h-10 animate-pulse bg-neutral-200/80 dark:bg-neutral-800/80 rounded-full backdrop-blur-sm" />
         ) : user ? (
-          <div className="flex items-center space-x-4 glass-dark dark:bg-white/5 p-2 pr-4 rounded-full border border-white/10">
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center space-x-3 glass-premium dark:glass-premium-dark p-2 pr-4 rounded-full shadow-lg hover-lift"
+          >
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold shadow-md">
               {user.email?.charAt(0).toUpperCase()}
             </div>
             <button
               onClick={() => signOut()}
-              className="flex items-center space-x-2 text-sm font-medium text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
+              className="flex items-center space-x-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white smooth-transition"
             >
               <LogOut className="w-4 h-4" />
-              <span>Exit</span>
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
-          </div>
+          </motion.div>
         ) : (
-          <button
+          <motion.button
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => signInWithGoogle()}
-            className="flex items-center space-x-2 px-6 py-3 text-sm font-semibold rounded-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:scale-105 transition-all shadow-xl"
+            className="flex items-center space-x-2 px-5 py-2.5 sm:px-6 sm:py-3 text-sm font-semibold rounded-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-xl hover:shadow-2xl smooth-transition"
           >
             <LogIn className="w-4 h-4" />
             <span>Sign In</span>
-          </button>
+          </motion.button>
         )}
       </div>
 
@@ -58,59 +69,101 @@ export default function Home() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
-        className="w-full max-w-4xl flex flex-col items-center text-center space-y-12 z-10"
+        className="w-full max-w-4xl flex flex-col items-center text-center space-y-10 sm:space-y-12 z-10"
       >
         {/* Badge */}
-        <div className="px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold tracking-widest uppercase mb-4">
-          Next-Gen Career AI
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-blue-500/10 border border-blue-500/20 backdrop-blur-sm"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span className="text-xs font-bold tracking-widest uppercase bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
+            Next-Gen Career AI
+          </span>
+        </motion.div>
 
         {/* Headline section */}
         <div className="space-y-6">
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight text-neutral-900 dark:text-white leading-[1.1]">
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-neutral-900 dark:text-white leading-[1.05]"
+          >
             Architect Your <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-500 animate-gradient">Future Mastery.</span>
-          </h1>
-          <p className="text-xl sm:text-2xl text-neutral-500 dark:text-neutral-400 max-w-2xl mx-auto leading-relaxed">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-500 to-blue-600 animate-gradient bg-[length:200%_auto]">
+              Future Mastery
+            </span>
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="text-lg sm:text-xl md:text-2xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto leading-relaxed font-medium"
+          >
             Personalized 100-step roadmaps, interactive skill assessments, and AI-driven career coaching.
-          </p>
+          </motion.p>
         </div>
 
         {/* Input form section */}
-        <form onSubmit={handleSubmit} className="w-full max-w-lg space-y-4 glass dark:bg-neutral-900/40 p-2 rounded-2xl border border-white/20 shadow-2xl">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              value={futureGoal}
-              onChange={(e) => setFutureGoal(e.target.value)}
-              placeholder="Your dream career... (e.g., AI Engineer)"
-              className="flex-1 px-6 py-4 text-lg rounded-xl bg-transparent text-neutral-900 dark:text-white placeholder:text-neutral-500 outline-none"
-              aria-label="Enter your future goal"
-            />
-            <button
-              type="submit"
-              className="px-8 py-4 text-lg font-bold rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-blue-500/20"
-              disabled={!futureGoal.trim()}
-            >
-              Initialize Path
-            </button>
+        <motion.form
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          onSubmit={handleSubmit}
+          className="w-full max-w-2xl"
+        >
+          <div className="glass-premium dark:glass-premium-dark p-2 rounded-2xl shadow-premium dark:shadow-premium-dark">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={futureGoal}
+                onChange={(e) => setFutureGoal(e.target.value)}
+                placeholder="Your dream career... (e.g., AI Engineer)"
+                className="flex-1 px-6 py-4 text-base sm:text-lg rounded-xl bg-white/50 dark:bg-neutral-900/50 text-neutral-900 dark:text-white placeholder:text-neutral-500 dark:placeholder:text-neutral-400 border-2 border-transparent focus:border-blue-500/50 focus:bg-white dark:focus:bg-neutral-900 focus-glow smooth-transition font-medium"
+                aria-label="Enter your future goal"
+              />
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="submit"
+                className="px-8 py-4 text-base sm:text-lg font-bold rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-purple-500 text-white smooth-transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40"
+                disabled={!futureGoal.trim()}
+              >
+                Initialize Path
+              </motion.button>
+            </div>
           </div>
-        </form>
+        </motion.form>
 
         {/* Features Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-3xl pt-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 w-full max-w-3xl pt-4"
+        >
           {[
-            { icon: Brain, title: "AI Guided", desc: "Predictive learning paths" },
-            { icon: Target, title: "100 Steps", desc: "Micro-milestone tracking" },
-            { icon: Rocket, title: "Fast-Track", desc: "XP-based gamification" }
+            { icon: Brain, title: "AI Guided", desc: "Predictive learning paths", color: "from-blue-500 to-cyan-500" },
+            { icon: Target, title: "100 Steps", desc: "Micro-milestone tracking", color: "from-purple-500 to-pink-500" },
+            { icon: Rocket, title: "Fast-Track", desc: "XP-based gamification", color: "from-orange-500 to-red-500" }
           ].map((feat, idx) => (
-            <div key={idx} className="flex flex-col items-center space-y-2 p-4 rounded-2xl glass-dark border border-white/5">
-              <feat.icon className="w-6 h-6 text-blue-500 mb-2" />
-              <h3 className="font-bold text-sm text-white">{feat.title}</h3>
-              <p className="text-xs text-neutral-500">{feat.desc}</p>
-            </div>
+            <motion.div
+              key={idx}
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ type: "spring", stiffness: 300 }}
+              className="group flex flex-col items-center space-y-3 p-6 rounded-2xl glass-premium dark:glass-premium-dark border border-white/20 dark:border-white/5 hover:border-white/40 dark:hover:border-white/10 smooth-transition cursor-pointer"
+            >
+              <div className={`p-3 rounded-xl bg-gradient-to-br ${feat.color} shadow-lg group-hover:shadow-xl smooth-transition`}>
+                <feat.icon className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="font-bold text-base text-neutral-900 dark:text-white">{feat.title}</h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">{feat.desc}</p>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </motion.div>
     </main>
   );

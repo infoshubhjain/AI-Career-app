@@ -3,8 +3,15 @@ import "./globals.css";
 import { AuthProvider } from "@/contexts/auth-context";
 
 export const metadata: Metadata = {
-  title: "Define Your Future Path",
-  description: "Choose what you want to become or what skill you want to learn",
+  title: "AI Career Tutor - Architect Your Future",
+  description: "Personalized AI-powered career roadmaps with 100-step learning paths, skill assessments, and gamified progression. Transform your career ambitions into reality.",
+  keywords: "career planning, AI tutor, learning roadmap, skill development, career coaching",
+  authors: [{ name: "AI Career Tutor" }],
+  viewport: "width=device-width, initial-scale=1",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" }
+  ],
 };
 
 export default function RootLayout({

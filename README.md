@@ -38,7 +38,30 @@ The system is built on a modern, scalable architecture:
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quick Start (One Command!)
+
+### Mac/Linux
+```bash
+./setup-and-launch.sh
+```
+
+### Windows
+```bash
+setup-and-launch.bat
+```
+Or just double-click `setup-and-launch.bat`
+
+**That's it!** The script will:
+- ✅ Check for Node.js/npm
+- ✅ Install all dependencies
+- ✅ Set up environment files
+- ✅ Launch the development server
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 📋 Manual Setup (If Needed)
 
 ### Prerequisites
 
@@ -59,6 +82,7 @@ The system is built on a modern, scalable architecture:
     ```env
     NEXT_PUBLIC_SUPABASE_URL=your_project_url
     NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+    GOOGLE_GENERATIVE_AI_API_KEY=your_google_ai_key
     ```
 4.  Run the development server:
     ```bash
@@ -67,7 +91,8 @@ The system is built on a modern, scalable architecture:
 
 ### Database Setup
 
-Run the initial schema migration in your Supabase SQL editor located at `/supabase/migrations/001_initial_schema.sql`.
+Run the initial schema migration in your Supabase SQL editor located at `/supabase/schema.sql`.
+
 
 ---
 

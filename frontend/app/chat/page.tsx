@@ -192,30 +192,32 @@ export default function ChatPage() {
     )
 
     return (
-        <div className="flex flex-col h-screen bg-neutral-50 dark:bg-neutral-950">
+        <div className="flex flex-col h-screen bg-gradient-to-br from-neutral-50 via-blue-50/20 to-purple-50/10 dark:from-neutral-950 dark:via-blue-950/10 dark:to-purple-950/5">
             {/* Header */}
-            <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-0 z-30">
-                <div className="flex items-center space-x-4">
-                    <Link href="/" className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors">
+            <header className="flex items-center justify-between px-4 sm:px-6 py-4 glass-premium dark:glass-premium-dark border-b border-white/20 dark:border-white/10 sticky top-0 z-30 backdrop-blur-xl">
+                <div className="flex items-center space-x-3 sm:space-x-4">
+                    <Link href="/" className="p-2 hover:bg-white/50 dark:hover:bg-neutral-800/50 rounded-full smooth-transition">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <div>
-                        <h1 className="font-bold text-lg hidden sm:block">Career Tutor</h1>
-                        <p className="text-[10px] text-neutral-500 uppercase tracking-tighter">Roadmap Path</p>
+                        <h1 className="font-bold text-base sm:text-lg hidden sm:block bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">Career Tutor</h1>
+                        <p className="text-[10px] text-neutral-600 dark:text-neutral-400 uppercase tracking-wider font-semibold">Roadmap Path</p>
                     </div>
                 </div>
 
-                <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-3 sm:space-x-6">
                     <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
 
-                    <button
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         onClick={() => setIsDashboardOpen(true)}
-                        className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                        className="p-2.5 bg-white/50 dark:bg-neutral-800/50 rounded-full hover:bg-white dark:hover:bg-neutral-800 smooth-transition shadow-sm hover:shadow-md"
                     >
                         <LayoutDashboard className="w-5 h-5" />
-                    </button>
+                    </motion.button>
 
-                    <div className="w-8 h-8 rounded-full bg-neutral-900 dark:bg-neutral-100 flex items-center justify-center text-white dark:text-neutral-900 text-xs font-bold ring-2 ring-neutral-200 dark:ring-neutral-800">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold shadow-md">
                         {user?.email?.charAt(0).toUpperCase() || 'U'}
                     </div>
                 </div>
@@ -248,16 +250,16 @@ export default function ChatPage() {
                                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                             >
                                 <div
-                                    className={`flex max-w-[85%] space-x-3 ${m.role === 'user' ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}
+                                    className={`flex max-w-[90%] sm:max-w-[85%] space-x-3 ${m.role === 'user' ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}
                                 >
-                                    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${m.role === 'user' ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900' : 'bg-blue-600 text-white'
+                                    <div className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center shadow-md ${m.role === 'user' ? 'bg-gradient-to-br from-neutral-800 to-neutral-900 dark:from-neutral-100 dark:to-neutral-200 text-white dark:text-neutral-900' : 'bg-gradient-to-br from-blue-500 to-purple-500 text-white'
                                         }`}>
                                         {m.role === 'user' ? <UserIcon className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                                     </div>
                                     <div
-                                        className={`px-4 py-3 rounded-2xl ${m.role === 'user'
-                                            ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900'
-                                            : 'glass-dark dark:bg-neutral-900/50 text-neutral-900 dark:text-white border border-neutral-200 dark:border-white/10 shadow-sm'
+                                        className={`px-5 py-3.5 rounded-2xl shadow-sm ${m.role === 'user'
+                                            ? 'bg-gradient-to-br from-neutral-900 to-neutral-800 dark:from-neutral-100 dark:to-neutral-50 text-white dark:text-neutral-900 shadow-md'
+                                            : 'glass-premium dark:glass-premium-dark text-neutral-900 dark:text-white border border-white/30 dark:border-white/10'
                                             }`}
                                     >
                                         <div className="text-sm leading-relaxed whitespace-pre-wrap">
@@ -285,20 +287,24 @@ export default function ChatPage() {
                     )}
                 </AnimatePresence>
                 {isTyping && messages[messages.length - 1]?.role !== 'assistant' && (
-                    <div className="flex justify-start">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="flex justify-start"
+                    >
                         <div className="flex space-x-3">
-                            <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center">
-                                <Bot className="w-4 h-4" />
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-md">
+                                <Bot className="w-4 h-4 text-white" />
                             </div>
-                            <div className="px-4 py-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm">
-                                <div className="flex space-x-1">
-                                    <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                    <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                    <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                            <div className="px-5 py-3.5 rounded-2xl glass-premium dark:glass-premium-dark border border-white/30 dark:border-white/10 shadow-sm">
+                                <div className="flex space-x-1.5">
+                                    <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                    <div className="w-2 h-2 bg-purple-500 dark:bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                    <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </motion.div>
                 )}
                 <div ref={messagesEndRef} />
             </main>
@@ -310,22 +316,24 @@ export default function ChatPage() {
             />
 
             {/* Input Area */}
-            <footer className="p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800">
+            <footer className="p-4 glass-premium dark:glass-premium-dark border-t border-white/20 dark:border-white/10 backdrop-blur-xl">
                 <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex space-x-2">
                     <input
                         type="text"
                         value={input}
                         onChange={handleInputChange}
                         placeholder="Type your message..."
-                        className="flex-1 px-4 py-3 bg-neutral-100 dark:bg-neutral-800 border-transparent rounded-xl focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white focus:bg-white dark:focus:bg-neutral-900 transition-all outline-none"
+                        className="flex-1 px-5 py-3.5 bg-white/50 dark:bg-neutral-900/50 border-2 border-transparent rounded-xl focus:border-blue-500/50 focus:bg-white dark:focus:bg-neutral-900 focus-glow smooth-transition outline-none font-medium placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
                     />
-                    <button
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         type="submit"
                         disabled={!input.trim() || isTyping}
-                        className="p-3 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-xl hover:opacity-90 disabled:opacity-50 transition-all"
+                        className="p-3.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed smooth-transition shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40"
                     >
                         <Send className="w-5 h-5" />
-                    </button>
+                    </motion.button>
                 </form>
             </footer>
 
