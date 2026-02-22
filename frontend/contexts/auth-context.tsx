@@ -21,11 +21,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient()
 
     useEffect(() => {
-        const getSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession()
-            setSession(session)
-            setUser(session?.user ?? null)
+        if (!supabase) {
             setLoading(false)
+            return
+        }
+
+        const getSession = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                setSession(session)
+                setUser(session?.user ?? null)
+            } catch (error) {
+                console.error('Error fetching session:', error)
+            } finally {
+                setLoading(false)
+            }
         }
 
         getSession()
@@ -39,13 +49,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => {
             subscription.unsubscribe()
         }
-    }, [supabase.auth])
+    }, [supabase])
 
     const signOut = async () => {
+        if (!supabase) return
         await supabase.auth.signOut()
     }
 
     const signInWithGoogle = async () => {
+        if (!supabase) return
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {

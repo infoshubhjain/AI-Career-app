@@ -112,7 +112,9 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "  3. GOOGLE_GENERATIVE_AI_API_KEY - Get from https://makersuite.google.com/app/apikey"
     echo ""
     
-    read -p "Do you want to open .env.local now to add your keys? (y/n) " -n 1 -r
+    # Non-blocking check for opening .env.local
+    echo "Do you want to open .env.local now to add your keys? (y/n) [Continuing in 5s...]"
+    read -t 5 -n 1 -r REPLY || REPLY="n"
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         if command -v code &> /dev/null; then
@@ -124,7 +126,8 @@ if [ ! -f "$ENV_FILE" ]; then
             print_info "Please edit frontend/.env.local manually"
         fi
         echo ""
-        read -p "Press Enter when you've added your API keys to continue..."
+        echo "Press Enter when you've added your API keys to continue... [Continuing in 10s...]"
+        read -t 10 -r || true
     fi
 else
     print_success ".env.local already exists"
@@ -133,7 +136,8 @@ else
     if grep -q "your_supabase" "$ENV_FILE" || grep -q "your_google" "$ENV_FILE"; then
         print_warning "Some API keys appear to be placeholder values"
         echo ""
-        read -p "Do you want to update your API keys now? (y/n) " -n 1 -r
+        echo "Do you want to update your API keys now? (y/n) [Continuing in 5s...]"
+        read -t 5 -n 1 -r REPLY || REPLY="n"
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             if command -v code &> /dev/null; then
@@ -144,7 +148,8 @@ else
                 print_info "Please edit frontend/.env.local manually"
             fi
             echo ""
-            read -p "Press Enter when you've updated your API keys to continue..."
+            echo "Press Enter when you've updated your API keys to continue... [Continuing in 10s...]"
+            read -t 10 -r || true
         fi
     else
         print_success "API keys are configured"

@@ -6,6 +6,7 @@ Open Terminal and run:
 
 ```bash
 cd /Users/shubh/Desktop/gh/AI-Career-app
+chmod +x *.sh
 ./setup-and-launch.sh
 ```
 

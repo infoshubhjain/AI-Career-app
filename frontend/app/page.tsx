@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { LogIn, LogOut, Rocket, Brain, Target, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
   const [futureGoal, setFutureGoal] = useState("");
@@ -20,7 +21,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen w-full flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden bg-gradient-to-br from-neutral-50 via-blue-50/30 to-purple-50/20 dark:from-neutral-950 dark:via-blue-950/20 dark:to-purple-950/10">
+    <main className="min-h-screen w-full flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden bg-gradient-to-br from-neutral-50 via-blue-50/30 to-purple-50/20 dark:from-[#06020c] dark:via-purple-950/40 dark:to-purple-900/10 transition-colors duration-500">
       {/* Enhanced Background Decorative Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-gradient-to-br from-blue-500/20 to-purple-500/20 blur-[120px] rounded-full animate-float" />
@@ -28,8 +29,9 @@ export default function Home() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-gradient-to-br from-blue-400/10 to-purple-400/10 blur-[100px] rounded-full" />
       </div>
 
-      {/* Auth UI */}
-      <div className="absolute top-6 sm:top-8 right-4 sm:right-8 z-20">
+      {/* Top Right Controls */}
+      <div className="absolute top-6 sm:top-8 right-4 sm:right-8 z-20 flex items-center gap-3">
+        <ThemeToggle />
         {loading ? (
           <div className="w-10 h-10 animate-pulse bg-neutral-200/80 dark:bg-neutral-800/80 rounded-full backdrop-blur-sm" />
         ) : user ? (
@@ -154,7 +156,7 @@ export default function Home() {
               key={idx}
               whileHover={{ scale: 1.05, y: -5 }}
               transition={{ type: "spring", stiffness: 300 }}
-              className="group flex flex-col items-center space-y-3 p-6 rounded-2xl glass-premium dark:glass-premium-dark border border-white/20 dark:border-white/5 hover:border-white/40 dark:hover:border-white/10 smooth-transition cursor-pointer"
+              className="group flex flex-col items-center space-y-3 p-6 rounded-2xl glass-premium dark:bg-neutral-900/30 dark:backdrop-blur-2xl border border-white/20 dark:border-purple-500/20 hover:border-white/40 dark:hover:border-purple-400/40 smooth-transition cursor-pointer"
             >
               <div className={`p-3 rounded-xl bg-gradient-to-br ${feat.color} shadow-lg group-hover:shadow-xl smooth-transition`}>
                 <feat.icon className="w-6 h-6 text-white" />

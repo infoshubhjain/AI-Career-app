@@ -7,15 +7,15 @@
 :root {
   --background: #fafafa;
   --foreground: #0a0a0a;
-  
+
   /* Modern Color Palette */
   --primary: 220 100% 60%;
   --primary-light: 220 100% 70%;
   --primary-dark: 220 100% 50%;
-  
+
   --accent: 260 100% 65%;
   --accent-light: 260 100% 75%;
-  
+
   --neutral-50: 0 0% 98%;
   --neutral-100: 0 0% 96%;
   --neutral-200: 0 0% 90%;
@@ -24,11 +24,11 @@
   --neutral-950: 0 0% 4%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #fafafa;
-  }
+.dark {
+  --background: #06020c;
+  /* Very deep purple/black */
+  --foreground: #f3effc;
+  /* High contrast slightly purple-tinted white */
 }
 
 * {
@@ -76,11 +76,11 @@ body {
   }
 
   .glass-premium {
-    @apply bg-white/60 backdrop-blur-2xl border border-white/40 shadow-[0_8px_32px_0_rgba(0,0,0,0.1)];
+    @apply bg-white/60 backdrop-blur-2xl border border-white/40 shadow-premium;
   }
 
   .glass-premium-dark {
-    @apply bg-neutral-900/60 backdrop-blur-2xl border border-white/20 shadow-[0_8px_32px_0_rgba(255,255,255,0.05)];
+    @apply bg-neutral-900/60 backdrop-blur-2xl border border-white/20 shadow-premium-dark;
   }
 
   /* Premium Gradients */
@@ -93,7 +93,7 @@ body {
   }
 
   .gradient-mesh {
-    background: 
+    background:
       radial-gradient(at 0% 0%, hsl(220, 100%, 60%) 0px, transparent 50%),
       radial-gradient(at 100% 100%, hsl(260, 100%, 65%) 0px, transparent 50%),
       radial-gradient(at 100% 0%, hsl(240, 100%, 70%) 0px, transparent 50%);
@@ -123,7 +123,7 @@ body {
   }
 
   .focus-glow {
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:shadow-[0_0_20px_rgba(59,130,246,0.3)];
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:shadow-glow;
   }
 
   /* Hover Effects */
@@ -132,30 +132,46 @@ body {
   }
 
   .hover-glow {
-    @apply transition-all duration-300 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)];
+    @apply transition-all duration-300 hover:shadow-glow;
   }
 }
 
 /* Keyframe Animations */
 @keyframes gradient {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
 }
 
 @keyframes glow {
   from {
     box-shadow: 0 0 10px rgba(59, 130, 246, 0.2),
-                0 0 20px rgba(59, 130, 246, 0.1);
+      0 0 20px rgba(59, 130, 246, 0.1);
   }
+
   to {
     box-shadow: 0 0 20px rgba(59, 130, 246, 0.4),
-                0 0 30px rgba(59, 130, 246, 0.2),
-                0 0 40px rgba(59, 130, 246, 0.1);
+      0 0 30px rgba(59, 130, 246, 0.2),
+      0 0 40px rgba(59, 130, 246, 0.1);
   }
 }
