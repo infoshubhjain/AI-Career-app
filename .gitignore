@@ -58,3 +58,16 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+venv/
+*.egg-info/
+
+# Backend - Generated files
+backend/roadmaps/*.json
+backend/logs/*.log
+# Keep directory structure
+!backend/roadmaps/.gitkeep
+!backend/logs/.gitkeep
+
+# Script logs
+logs/
+*.pid

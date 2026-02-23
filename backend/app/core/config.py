@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = ""  # Found in Supabase Dashboard → Settings → API → JWT Secret
     
+    # LLM Configuration
+    LLM_PROVIDER: str = "ollama"  # ollama or openrouter
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5:3b"
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = ""
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
