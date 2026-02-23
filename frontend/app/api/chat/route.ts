@@ -1,4 +1,4 @@
-import { streamText, tool } from 'ai';
+import { streamText } from 'ai';
 import { googleAI } from '@/lib/ai/ai-client';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { generateAndSaveRoadmap } from '@/lib/ai/roadmap-service';
@@ -14,34 +14,37 @@ export async function POST(req: Request) {
         const isMockMode = process.env.NEXT_PUBLIC_MOCK_AI === 'true' || !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
         if (isMockMode) {
-            // Simulated streaming response for testing without API keys
+            const lastMsgObj = messages[messages.length - 1];
+            let lastMessage = '';
+
+            if (typeof lastMsgObj.content === 'string') {
+                lastMessage = lastMsgObj.content.toLowerCase();
+            } else if (Array.isArray(lastMsgObj.content)) {
+                lastMessage = lastMsgObj.content
+                    .filter((p: any) => p.type === 'text')
+                    .map((p: any) => p.text)
+                    .join(' ')
+                    .toLowerCase();
+            }
+
+            let content = "I'm currently in **Mock Mode** because no API key was found. Even so, I can help you test the leveling system!\n\nTo move forward, tell me more about your specific interests in this field.";
+
+            if (lastMessage.includes('quiz')) {
+                content = "Sure! Let's test your knowledge. Get ready...\n\nTRIGGER_QUIZ";
+            } else if (lastMessage.includes('roadmap')) {
+                content = "I've already started building your roadmap. You're currently at Step 1: Foundation. What's your current experience level?";
+            } else if (lastMessage.includes('beginner')) {
+                content = "Great! I am generating a tailored roadmap for a complete beginner. Let's do this!";
+            }
+
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
                 async start(controller) {
-                    const lastMsgObj = messages[messages.length - 1];
-                    let lastMessage = '';
-
-                    if (typeof lastMsgObj.content === 'string') {
-                        lastMessage = lastMsgObj.content.toLowerCase();
-                    } else if (Array.isArray(lastMsgObj.content)) {
-                        lastMessage = lastMsgObj.content
-                            .filter((p: any) => p.type === 'text')
-                            .map((p: any) => p.text)
-                            .join(' ')
-                            .toLowerCase();
-                    }
-
-                    let content = "I'm currently in **Mock Mode** because no API key was found. Even so, I can help you test the leveling system!\n\nTo move forward, tell me more about your specific interests in this field.";
-
-                    if (lastMessage.includes('quiz')) {
-                        content = "Sure! Let's test your knowledge. Get ready...\n\nTRIGGER_QUIZ";
-                    } else if (lastMessage.includes('roadmap')) {
-                        content = "I've already started building your roadmap. You're currently at Step 1: Foundation. What's your current experience level?";
-                    }
-
+                    // Send the start of stream sequence if needed, but text chunks are sufficient
                     const chunks = content.split(' ');
-                    for (const chunk of chunks) {
-                        controller.enqueue(encoder.encode(`0:"${chunk} "`));
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunk = chunks[i] + (i < chunks.length - 1 ? ' ' : '');
+                        controller.enqueue(encoder.encode(`0:${JSON.stringify(chunk)}\n`));
                         await new Promise(r => setTimeout(r, 40));
                     }
                     controller.close();
@@ -49,22 +52,24 @@ export async function POST(req: Request) {
             });
 
             return new Response(stream, {
-                headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+                headers: {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'x-vercel-ai-data-stream': 'v1'
+                }
             });
         }
-
         const result = streamText({
             model: googleAI,
             system: systemPrompt,
             messages,
             tools: {
-                generateRoadmap: tool({
+                generateRoadmap: {
                     description: 'Generate a 100-step career roadmap for the user based on their goal and level.',
                     parameters: z.object({
                         goal: z.string().describe('The career goal of the user.'),
                         level: z.string().describe('The current experience level of the user.'),
                     }),
-                    execute: async ({ goal, level }: { goal: string; level: string }) => {
+                    execute: async ({ goal, level }: { goal: string, level: string }) => {
                         const roadmap = await generateAndSaveRoadmap(userId, goal, level);
                         return {
                             roadmap_id: roadmap.id,
@@ -74,9 +79,9 @@ export async function POST(req: Request) {
                                 total_steps: roadmap.full_roadmap.total_steps,
                                 next_milestone: roadmap.full_roadmap.phases[0].title
                             }
-                        } as any;
+                        };
                     },
-                }) as any,
+                } as any,
             },
         });
 

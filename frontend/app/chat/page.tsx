@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
-import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard } from 'lucide-react'
+import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard, Target } from 'lucide-react'
 import Link from 'next/link'
 import { Message, UserProfile } from '@/types'
 import { useChat } from '@ai-sdk/react'
@@ -13,9 +13,19 @@ import { QuizOverlay, QuizQuestion } from './components/QuizOverlay'
 import { motion, AnimatePresence } from 'framer-motion'
 
 function getTextFromMessage(m: any): string {
-    if (m.content) return m.content;
-    if (m.parts) {
+    if (typeof m.content === 'string') {
+        return m.content;
+    }
+    // Fallback if Vercel SDK parses parts into the content field unexpectedly or if the db mapped it this way
+    if (Array.isArray(m.parts)) {
         return m.parts
+            .filter((p: any) => p.type === 'text')
+            .map((p: any) => p.text)
+            .join('\n');
+    }
+    // Handle Vercel CoreMessage 'content' array parts
+    if (Array.isArray(m.content)) {
+        return m.content
             .filter((p: any) => p.type === 'text')
             .map((p: any) => p.text)
             .join('\n');
@@ -145,7 +155,6 @@ export default function ChatPage() {
         }
 
         await sendMessage({
-            role: 'user',
             text: currentInput
         })
     }
@@ -264,19 +273,57 @@ export default function ChatPage() {
                                     >
                                         <div className="text-sm leading-relaxed whitespace-pre-wrap">
                                             {getTextFromMessage(m)}
+                                            {m.role === 'assistant' && process.env.NODE_ENV === 'development' && (
+                                                <pre className="mt-2 text-[10px] text-gray-500 overflow-x-auto max-w-full">
+                                                    {JSON.stringify(m, null, 2)}
+                                                </pre>
+                                            )}
                                         </div>
                                         {m.toolInvocations?.map((toolInvocation: any) => {
                                             const toolCallId = toolInvocation.toolCallId;
                                             if (toolInvocation.state === 'result') {
+                                                const res = toolInvocation.result;
                                                 return (
-                                                    <div key={toolCallId} className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-400">
-                                                        <strong>Roadmap Created:</strong> {toolInvocation.result.message}
-                                                    </div>
+                                                    <motion.div
+                                                        key={toolCallId}
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        className="mt-3 p-4 bg-gradient-to-br from-blue-900/40 to-purple-900/40 border border-purple-500/30 rounded-2xl backdrop-blur-md shadow-lg shadow-purple-900/20"
+                                                    >
+                                                        <div className="flex items-center space-x-3 mb-3">
+                                                            <div className="p-2 bg-purple-500/20 rounded-full">
+                                                                <Target className="w-5 h-5 text-purple-400" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <h4 className="font-bold text-white text-sm">Roadmap Generated</h4>
+                                                                <p className="text-xs text-purple-200/70">{res?.message || 'Your personalized career path is ready.'}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        {res?.preview && (
+                                                            <div className="mb-4 bg-black/20 rounded-xl p-3 border border-white/5 flex items-center justify-between">
+                                                                <div className="text-center px-2">
+                                                                    <div className="text-xl font-bold text-blue-400">{res.preview.total_steps || 100}</div>
+                                                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider">Steps</div>
+                                                                </div>
+                                                                <div className="w-px h-8 bg-white/10 mx-2"></div>
+                                                                <div className="flex-1 px-2 text-right">
+                                                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">First Milestone</div>
+                                                                    <div className="text-xs font-medium text-white line-clamp-1">{res.preview.next_milestone || 'Foundation'}</div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <Link href="/roadmap" className="block w-full text-center py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-semibold rounded-xl smooth-transition shadow-md shadow-purple-500/20 hover:shadow-purple-500/40">
+                                                            View Full Roadmap
+                                                        </Link>
+                                                    </motion.div>
                                                 );
                                             }
                                             return (
-                                                <div key={toolCallId} className="mt-2 p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-xs animate-pulse">
-                                                    Generating roadmap...
+                                                <div key={toolCallId} className="mt-3 p-4 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl flex items-center space-x-3 border border-white/5 shadow-inner">
+                                                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Architecting your 100-step career path...</span>
                                                 </div>
                                             );
                                         })}
