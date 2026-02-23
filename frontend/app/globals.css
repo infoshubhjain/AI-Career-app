@@ -1,271 +1,177 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ========================================
-   CSS Variables & Theme
-   ======================================== */
 :root {
-  /* Colors */
   --background: #fafafa;
   --foreground: #0a0a0a;
-  --muted: #737373;
-  --muted-foreground: #a3a3a3;
-  --border: #e5e5e5;
-  --ring: #0a0a0a;
-  
-  /* Accent colors */
-  --primary: #0a0a0a;
-  --primary-foreground: #fafafa;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #0a0a0a;
-  
-  /* Status colors */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --info: #3b82f6;
+
+  /* Modern Color Palette */
+  --primary: 220 100% 60%;
+  --primary-light: 220 100% 70%;
+  --primary-dark: 220 100% 50%;
+
+  --accent: 260 100% 65%;
+  --accent-light: 260 100% 75%;
+
+  --neutral-50: 0 0% 98%;
+  --neutral-100: 0 0% 96%;
+  --neutral-200: 0 0% 90%;
+  --neutral-800: 0 0% 15%;
+  --neutral-900: 0 0% 9%;
+  --neutral-950: 0 0% 4%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #fafafa;
-    --muted: #a3a3a3;
-    --muted-foreground: #737373;
-    --border: #262626;
-    --ring: #fafafa;
-    
-    --primary: #fafafa;
-    --primary-foreground: #0a0a0a;
-    --secondary: #171717;
-    --secondary-foreground: #fafafa;
-  }
+.dark {
+  --background: #06020c;
+  /* Very deep purple/black */
+  --foreground: #f3effc;
+  /* High contrast slightly purple-tinted white */
 }
 
-/* ========================================
-   Base Styles
-   ======================================== */
 * {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-html {
-  scroll-behavior: smooth;
+  @apply scroll-smooth;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
-    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  min-height: 100vh;
 }
 
-/* ========================================
-   Custom Utilities
-   ======================================== */
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-  
-  .text-gradient {
-    background: linear-gradient(135deg, var(--foreground) 0%, var(--muted) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-}
-
-/* ========================================
-   Animations
-   ======================================== */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes bounce {
-  0%, 100% {
-    transform: translateY(-5%);
-    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
-  }
-  50% {
-    transform: translateY(0);
-    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-/* Animation utility classes */
-@layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-out forwards;
-  }
-  
-  .animate-fade-in-up {
-    animation: fadeInUp 0.5s ease-out forwards;
-  }
-  
-  .animate-fade-in-down {
-    animation: fadeInDown 0.5s ease-out forwards;
-  }
-  
-  .animate-slide-in-left {
-    animation: slideInLeft 0.5s ease-out forwards;
-  }
-  
-  .animate-slide-in-right {
-    animation: slideInRight 0.5s ease-out forwards;
-  }
-  
-  .animate-scale-in {
-    animation: scaleIn 0.3s ease-out forwards;
-  }
-  
-  .animate-shimmer {
-    background: linear-gradient(
-      90deg,
-      var(--secondary) 0%,
-      var(--border) 50%,
-      var(--secondary) 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
-  
-  /* Staggered animation delays */
-  .animation-delay-100 { animation-delay: 100ms; }
-  .animation-delay-200 { animation-delay: 200ms; }
-  .animation-delay-300 { animation-delay: 300ms; }
-  .animation-delay-400 { animation-delay: 400ms; }
-  .animation-delay-500 { animation-delay: 500ms; }
-}
-
-/* ========================================
-   Scrollbar Styling
-   ======================================== */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--secondary);
+  @apply bg-transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--muted);
-  border-radius: 4px;
+  @apply bg-neutral-300 dark:bg-neutral-700 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
+  @apply bg-neutral-400 dark:bg-neutral-600;
 }
 
-/* ========================================
-   Focus Styles
-   ======================================== */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Enhanced Glassmorphism */
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl border border-white/30 shadow-2xl;
+  }
+
+  .glass-dark {
+    @apply bg-neutral-900/80 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+
+  .glass-premium {
+    @apply bg-white/60 backdrop-blur-2xl border border-white/40 shadow-premium;
+  }
+
+  .glass-premium-dark {
+    @apply bg-neutral-900/60 backdrop-blur-2xl border border-white/20 shadow-premium-dark;
+  }
+
+  /* Premium Gradients */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(220, 100%, 60%) 0%, hsl(260, 100%, 65%) 100%);
+  }
+
+  .gradient-accent {
+    background: linear-gradient(135deg, hsl(260, 100%, 65%) 0%, hsl(280, 100%, 70%) 100%);
+  }
+
+  .gradient-mesh {
+    background:
+      radial-gradient(at 0% 0%, hsl(220, 100%, 60%) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, hsl(260, 100%, 65%) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(240, 100%, 70%) 0px, transparent 50%);
+  }
+
+  /* Smooth Animations */
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 8s ease infinite;
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  .smooth-transition {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  /* Focus Styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-neutral-950;
+  }
+
+  .focus-glow {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:shadow-glow;
+  }
+
+  /* Hover Effects */
+  .hover-lift {
+    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-xl;
+  }
+
+  .hover-glow {
+    @apply transition-all duration-300 hover:shadow-glow;
+  }
 }
 
-/* ========================================
-   Selection Styles
-   ======================================== */
-::selection {
-  background: var(--primary);
-  color: var(--primary-foreground);
+/* Keyframe Animations */
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.2),
+      0 0 20px rgba(59, 130, 246, 0.1);
+  }
+
+  to {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4),
+      0 0 30px rgba(59, 130, 246, 0.2),
+      0 0 40px rgba(59, 130, 246, 0.1);
+  }
 }
