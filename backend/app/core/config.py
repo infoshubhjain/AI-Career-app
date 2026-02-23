@@ -31,12 +31,20 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = ""  # Found in Supabase Dashboard → Settings → API → JWT Secret
     
-    # LLM Configuration
-    LLM_PROVIDER: str = "ollama"  # ollama or openrouter
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:3b"
+    # LLM API keys (provider is selected in backend/config.yaml)
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_MODEL: str = "gemini-1.5-flash"
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = ""
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
+    OPENROUTER_SITE_URL: str = ""
+    OPENROUTER_SITE_NAME: str = ""
+
+    # JWT
+    JWT_SECRET_KEY: str = "change-me"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     
     class Config:
         env_file = ".env"
@@ -55,5 +63,4 @@ def get_settings() -> Settings:
 
 # Global settings instance
 settings = get_settings()
-
 

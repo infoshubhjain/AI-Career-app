@@ -1,0 +1,8 @@
+llm:
+  provider: openai
+  temperature: 0.2
+  timeout_seconds: 180
+  models:
+    openai: gpt-4o-mini
+    google: gemini-1.5-flash
+    openrouter: openai/gpt-4o-mini
