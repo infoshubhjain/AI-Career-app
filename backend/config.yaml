@@ -1,5 +1,5 @@
 llm:
-  provider: openai
+  provider: openai # openrouter / google / openai
   temperature: 0.2
   timeout_seconds: 180
   models:
