@@ -43,11 +43,14 @@ export interface RoadmapData {
     phases: RoadmapPhase[];
 }
 
-export async function generateAndSaveRoadmap(userId: string, goal: string, level: string) {
+export async function generateAndSaveRoadmap(userId: string, goal: string, level: string, context?: string) {
     const supabase = await createClient();
 
     // Call the backend Roadmap Agent API
-    const query = `${goal}. My current level is: ${level}`;
+    let query = `${goal}. My current level is: ${level}`;
+    if (context) {
+        query += `. Additional context: ${context}`;
+    }
 
     // We fetch directly because this is a server action, not a client component
     const response = await fetch(`${API_URL}/api/roadmap/generate`, {

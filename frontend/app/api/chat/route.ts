@@ -83,14 +83,18 @@ export async function POST(req: Request) {
                                 type: 'string',
                                 description: 'The current experience level of the user.'
                             },
+                            context: {
+                                type: 'string',
+                                description: 'Any additionally gathered context like specific niche, location, time commitment, or constraints.'
+                            }
                         },
                         required: ['goal', 'level'],
                     }),
-                    execute: async ({ goal, level }: { goal: string, level: string }) => {
-                        const roadmap = await generateAndSaveRoadmap(userId, goal, level);
+                    execute: async ({ goal, level, context }: { goal: string, level: string, context?: string }) => {
+                        const roadmap = await generateAndSaveRoadmap(userId, goal, level, context);
                         return {
                             roadmap_id: roadmap.id,
-                            message: `I've successfully created your roadmap for becoming a ${goal}!`,
+                            message: `I've successfully created your highly detailed roadmap for becoming a ${goal}!`,
                             preview: {
                                 current_step: 1,
                                 total_steps: roadmap.full_roadmap.total_steps,
