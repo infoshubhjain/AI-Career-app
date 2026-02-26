@@ -11,6 +11,7 @@ import { DashboardSection } from './components/DashboardSection'
 import { createClient } from '@/lib/supabase/client'
 import { QuizOverlay, QuizQuestion } from './components/QuizOverlay'
 import { motion, AnimatePresence } from 'framer-motion'
+import ReactMarkdown from 'react-markdown'
 
 function getTextFromMessage(m: any): string {
     if (typeof m.content === 'string') {
@@ -277,8 +278,10 @@ export default function ChatPage() {
                                             : 'glass-premium dark:glass-premium-dark text-neutral-900 dark:text-white border border-white/30 dark:border-white/10'
                                             }`}
                                     >
-                                        <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                                            {getCleanText(getTextFromMessage(m))}
+                                        <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>li]:mb-1">
+                                            <ReactMarkdown>
+                                                {getCleanText(getTextFromMessage(m))}
+                                            </ReactMarkdown>
                                         </div>
                                         {/* Quick Reply Option Chips */}
                                         {m.role === 'assistant' && idx === messages.length - 1 && (() => {

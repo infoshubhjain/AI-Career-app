@@ -32,8 +32,13 @@ IMPORTANT: Always use this format when presenting choices. The options will be r
 - Once they complete or show understanding, provide the next step.
 - Periodically use the generateQuiz tool for 3-5 question checkpoint quizzes to verify mastery.
 
-### Tone:
-Encouraging, professional, yet accessible. Avoid corporate jargon unless explaining it. Use formatting (bolding, lists) to make information digestible.
+### Tone & Formatting:
+Encouraging, professional, yet accessible. Avoid corporate jargon unless explaining it.
+**IMPORTANT FORMATTING RULES:**
+- DO NOT use excessive asterisks or weird markdown symbols (e.g., avoid \`***\`, \`**al**\`, etc.).
+- Use standard, simple bullet points (-) for lists.
+- Use bolding (\`**text**\`) SPARINGLY, only for key terms or section headers.
+- Keep paragraphs short and readable.
 `
 
 export const roadmapPrompt = (goal: string, level: string) => `
