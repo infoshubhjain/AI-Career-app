@@ -99,6 +99,72 @@ export async function POST(req: Request) {
                         };
                     },
                 },
+                generateQuiz: {
+                    description: 'Generate a short interactive quiz to test the user\'s knowledge on a specific topic. Use this tool when the user has learned something and needs to be tested, or when they explicitly ask for a quiz.',
+                    inputSchema: jsonSchema({
+                        type: 'object',
+                        properties: {
+                            topic: {
+                                type: 'string',
+                                description: 'The topic to generate quiz questions about (e.g., "JavaScript fundamentals", "Git version control").'
+                            },
+                            difficulty: {
+                                type: 'string',
+                                description: 'The difficulty level: beginner, intermediate, or advanced.',
+                                enum: ['beginner', 'intermediate', 'advanced']
+                            },
+                            numQuestions: {
+                                type: 'number',
+                                description: 'Number of questions to generate (3-5).'
+                            },
+                        },
+                        required: ['topic', 'difficulty'],
+                    }),
+                    execute: async ({ topic, difficulty, numQuestions }: { topic: string, difficulty: string, numQuestions?: number }) => {
+                        const count = Math.min(Math.max(numQuestions || 3, 2), 5);
+                        // Use the AI provider to generate quiz questions
+                        const { generateText } = await import('ai');
+                        const quizResult = await generateText({
+                            model: aiProvider,
+                            prompt: `Generate exactly ${count} multiple-choice quiz questions about "${topic}" at a ${difficulty} difficulty level.
+
+Return ONLY a valid JSON array. Each question object must have:
+- "id": a unique string like "q1", "q2", etc.
+- "question": the question text
+- "options": array of exactly 4 answer strings
+- "correctAnswer": the 0-based index of the correct option
+- "explanation": a brief explanation of why the correct answer is right
+
+Example format:
+[{"id":"q1","question":"What is...?","options":["A","B","C","D"],"correctAnswer":0,"explanation":"Because..."}]
+
+Return ONLY the JSON array, no markdown, no code blocks, no extra text.`,
+                        });
+
+                        try {
+                            // Parse the generated quiz
+                            let quizText = quizResult.text.trim();
+                            // Strip markdown code blocks if present
+                            if (quizText.startsWith('```')) {
+                                quizText = quizText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+                            }
+                            const questions = JSON.parse(quizText);
+                            return {
+                                type: 'quiz',
+                                topic,
+                                difficulty,
+                                questions,
+                                message: `Here's a ${difficulty} quiz on "${topic}" with ${questions.length} questions!`
+                            };
+                        } catch (parseError) {
+                            console.error('Failed to parse quiz JSON:', parseError);
+                            return {
+                                type: 'quiz_error',
+                                message: 'I had trouble generating the quiz. Let me try explaining the topic instead.'
+                            };
+                        }
+                    },
+                },
             },
         });
 

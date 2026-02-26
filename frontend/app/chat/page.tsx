@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
-import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard, Target } from 'lucide-react'
+import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard, Target, Brain } from 'lucide-react'
 import Link from 'next/link'
 import { Message, UserProfile } from '@/types'
 import { useChat } from '@ai-sdk/react'
@@ -83,25 +83,16 @@ export default function ChatPage() {
                 })
             }
 
-            // Check for mock quiz trigger in content
-            if (content.includes('TRIGGER_QUIZ')) {
-                const mockQuestions: QuizQuestion[] = [
-                    {
-                        id: 'q1',
-                        question: "What is the primary role of a Software Engineer?",
-                        options: ["Designing UI", "Writing and maintaining code", "Managing sales", "Recruiting"],
-                        correctAnswer: 1,
-                        explanation: "Software engineers focus on the full lifecycle of software development, primarily writing and maintaining code."
-                    },
-                    {
-                        id: 'q2',
-                        question: "Which of these is a common version control tool?",
-                        options: ["React", "Git", "Node.js", "Tailwind"],
-                        correctAnswer: 1,
-                        explanation: "Git is the industry standard for version control, allowing developers to track changes and collaborate."
+            // Check for quiz tool invocations in the message
+            if ((message as any).parts) {
+                for (const part of (message as any).parts) {
+                    if (part.type === 'tool-invocation' && part.toolName === 'generateQuiz' && part.state === 'result') {
+                        const res = part.result;
+                        if (res?.type === 'quiz' && res?.questions) {
+                            setActiveQuiz(res.questions);
+                        }
                     }
-                ]
-                setActiveQuiz(mockQuestions)
+                }
             }
         }
     })
@@ -274,10 +265,43 @@ export default function ChatPage() {
                                         <div className="text-sm leading-relaxed whitespace-pre-wrap">
                                             {getTextFromMessage(m)}
                                         </div>
-                                        {m.toolInvocations?.map((toolInvocation: any) => {
-                                            const toolCallId = toolInvocation.toolCallId;
-                                            if (toolInvocation.state === 'result') {
-                                                const res = toolInvocation.result;
+                                        {/* Tool Invocations (parts-based for AI SDK 6.x) */}
+                                        {(m as any).parts?.filter((p: any) => p.type === 'tool-invocation').map((toolPart: any) => {
+                                            const toolCallId = toolPart.toolCallId;
+                                            const toolName = toolPart.toolName;
+
+                                            if (toolPart.state === 'result') {
+                                                const res = toolPart.result;
+
+                                                // Quiz Result
+                                                if (toolName === 'generateQuiz' && res?.type === 'quiz') {
+                                                    return (
+                                                        <motion.div
+                                                            key={toolCallId}
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className="mt-3 p-4 bg-gradient-to-br from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 rounded-2xl backdrop-blur-md shadow-lg shadow-emerald-900/20"
+                                                        >
+                                                            <div className="flex items-center space-x-3 mb-3">
+                                                                <div className="p-2 bg-emerald-500/20 rounded-full">
+                                                                    <Brain className="w-5 h-5 text-emerald-400" />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <h4 className="font-bold text-white text-sm">Quiz Ready!</h4>
+                                                                    <p className="text-xs text-emerald-200/70">{res?.message || `${res?.questions?.length} questions on ${res?.topic}`}</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => setActiveQuiz(res.questions)}
+                                                                className="block w-full text-center py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-semibold rounded-xl smooth-transition shadow-md"
+                                                            >
+                                                                Start Quiz
+                                                            </button>
+                                                        </motion.div>
+                                                    );
+                                                }
+
+                                                // Roadmap Result
                                                 return (
                                                     <motion.div
                                                         key={toolCallId}
@@ -315,10 +339,14 @@ export default function ChatPage() {
                                                     </motion.div>
                                                 );
                                             }
+
+                                            // Loading state
                                             return (
                                                 <div key={toolCallId} className="mt-3 p-4 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl flex items-center space-x-3 border border-white/5 shadow-inner">
                                                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">Architecting your 100-step career path...</span>
+                                                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                                                        {toolName === 'generateQuiz' ? 'Generating your quiz...' : 'Architecting your career path...'}
+                                                    </span>
                                                 </div>
                                             );
                                         })}
