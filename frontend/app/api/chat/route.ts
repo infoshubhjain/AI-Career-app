@@ -58,15 +58,10 @@ export async function POST(req: Request) {
             });
         }
 
-        const normalizedMessages = messages.map((m: any) => ({
-            ...m,
-            parts: m.parts || [{ type: 'text', text: m.content || '' }]
-        }));
-
         const result = await streamText({
             model: aiProvider,
             system: systemPrompt,
-            messages: await convertToModelMessages(normalizedMessages),
+            messages: await convertToModelMessages(messages),
             tools: {
                 generateRoadmap: {
                     description: 'Generate a career roadmap for the user based on their goal and level.',
