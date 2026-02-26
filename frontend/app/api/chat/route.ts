@@ -88,15 +88,17 @@ export async function POST(req: Request) {
                         required: ['goal', 'level'],
                     }),
                     execute: async ({ goal, level, context }: { goal: string, level: string, context?: string }) => {
-                        const roadmap = await generateAndSaveRoadmap(userId, goal, level, context);
+                        // Fire and forget using Node setTimeout to break Next.js async tracking
+                        setTimeout(() => {
+                            generateAndSaveRoadmap(userId, goal, level, context).catch((err) => {
+                                console.error("Background roadmap generation failed:", err);
+                            });
+                        }, 100).unref();
+
                         return {
-                            roadmap_id: roadmap.id,
-                            message: `I've successfully created your highly detailed roadmap for becoming a ${goal}!`,
-                            preview: {
-                                current_step: 1,
-                                total_steps: roadmap.full_roadmap.total_steps,
-                                next_milestone: roadmap.full_roadmap.phases[0].title
-                            }
+                            roadmap_id: "pending",
+                            message: `I've started creating your highly detailed roadmap for becoming a ${goal}! Since it's extremely comprehensive (100+ steps), it will take about a minute to architect in the background. You can check your Dashboard to view it once it's ready.`,
+                            preview: null // Omit preview since it's not generated yet
                         };
                     },
                 },

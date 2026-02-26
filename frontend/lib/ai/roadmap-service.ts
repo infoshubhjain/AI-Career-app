@@ -1,6 +1,8 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -52,14 +54,21 @@ export async function generateAndSaveRoadmap(userId: string, goal: string, level
         query += `. Additional context: ${context}`;
     }
 
-    // We fetch directly because this is a server action, not a client component
-    const response = await fetch(`${API_URL}/api/roadmap/generate`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query }),
-    });
+    let response;
+    try {
+        // We fetch directly because this is a server action, not a client component
+        response = await fetch(`${API_URL}/api/roadmap/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query }),
+        });
+    } catch (fetchErr: any) {
+        const logPath = path.join(process.cwd(), 'debug-fetch-error.log');
+        fs.appendFileSync(logPath, `\n\n--- FETCH ERROR ${new Date().toISOString()} ---\n${String(fetchErr)}\n${fetchErr.stack}\n`);
+        throw new Error(`Fetch to python backend failed: ${fetchErr.message}`);
+    }
 
     if (!response.ok) {
         let errorMsg = 'Failed to generate roadmap from backend';

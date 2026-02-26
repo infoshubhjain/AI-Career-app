@@ -75,7 +75,6 @@ export default function ChatPage() {
 
     const [input, setInput] = useState('')
     const { messages, sendMessage, status, setMessages } = useChat({
-        maxSteps: 5,
         // In AI SDK 6.x, chat options might have changed. 
         // We ensure profile updates on finish.
         onFinish: async ({ message }) => {
@@ -101,10 +100,10 @@ export default function ChatPage() {
             }
 
             // Check for quiz tool invocations in the message
-            if ((message as any).parts) {
-                for (const part of (message as any).parts) {
-                    if (part.type === 'tool-invocation' && part.toolName === 'generateQuiz' && part.state === 'result') {
-                        const res = part.result;
+            if (message.toolInvocations) {
+                for (const toolPart of message.toolInvocations) {
+                    if (toolPart.toolName === 'generateQuiz' && toolPart.state === 'result') {
+                        const res = toolPart.result;
                         if (res?.type === 'quiz' && res?.questions) {
                             setActiveQuiz(res.questions);
                         }
@@ -316,8 +315,8 @@ export default function ChatPage() {
                                                 </div>
                                             );
                                         })()}
-                                        {/* Tool Invocations (parts-based for AI SDK 6.x) */}
-                                        {(m as any).parts?.filter((p: any) => p.type === 'tool-invocation').map((toolPart: any) => {
+                                        {/* Tool Invocations */}
+                                        {m.toolInvocations?.map((toolPart: any) => {
                                             const toolCallId = toolPart.toolCallId;
                                             const toolName = toolPart.toolName;
 
