@@ -75,6 +75,7 @@ export default function ChatPage() {
 
     const [input, setInput] = useState('')
     const { messages, sendMessage, status, setMessages } = useChat({
+        maxSteps: 5,
         // In AI SDK 6.x, chat options might have changed. 
         // We ensure profile updates on finish.
         onFinish: async ({ message }) => {

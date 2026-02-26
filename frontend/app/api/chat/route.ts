@@ -3,6 +3,8 @@ import { aiProvider } from '@/lib/ai/ai-client';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { generateAndSaveRoadmap } from '@/lib/ai/roadmap-service';
 import { z } from 'zod';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export const maxDuration = 120;
 
@@ -170,6 +172,12 @@ Return ONLY the JSON array, no markdown, no code blocks, no extra text.`,
         return result.toUIMessageStreamResponse();
     } catch (error) {
         console.error('Chat API Error:', error);
+        try {
+            const logPath = path.join(process.cwd(), 'debug-chat-error.log');
+            fs.appendFileSync(logPath, `\n\n--- ERROR AT ${new Date().toISOString()} ---\n${String(error)}\n${error instanceof Error ? error.stack : ''}\n`);
+        } catch (e) {
+            console.error('Failed to write log', e);
+        }
         return new Response(JSON.stringify({ error: 'Failed to process chat' }), {
             status: 500,
             headers: { 'Content-Type': 'application/json' }
