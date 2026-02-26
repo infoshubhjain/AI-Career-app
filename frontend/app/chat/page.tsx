@@ -184,7 +184,7 @@ export default function ChatPage() {
             const welcomeMessage: any = {
                 id: 'welcome',
                 role: 'assistant',
-                parts: [{ type: 'text' as const, text: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this? (e.g., complete beginner, some basic knowledge, or switching from a related field?)` }],
+                parts: [{ type: 'text' as const, text: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this?\n\n[OPTIONS: Complete Beginner | Some Basic Knowledge | Switching from Related Field]` }],
                 created_at: new Date().toISOString()
             }
             setMessages([welcomeMessage])
