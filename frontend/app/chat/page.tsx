@@ -33,6 +33,21 @@ function getTextFromMessage(m: any): string {
     return '';
 }
 
+/* ─── Quick Reply Options parser ─── */
+const OPTIONS_REGEX = /\[OPTIONS:\s*(.+?)\]/g;
+
+function parseOptions(text: string): string[] {
+    const matches = [...text.matchAll(OPTIONS_REGEX)];
+    if (matches.length === 0) return [];
+    // Take the last OPTIONS block (in case there are multiple)
+    const lastMatch = matches[matches.length - 1];
+    return lastMatch[1].split('|').map(o => o.trim()).filter(Boolean);
+}
+
+function getCleanText(text: string): string {
+    return text.replace(OPTIONS_REGEX, '').trim();
+}
+
 export default function ChatPage() {
     const { user, loading } = useAuth()
     const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -263,8 +278,40 @@ export default function ChatPage() {
                                             }`}
                                     >
                                         <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                                            {getTextFromMessage(m)}
+                                            {getCleanText(getTextFromMessage(m))}
                                         </div>
+                                        {/* Quick Reply Option Chips */}
+                                        {m.role === 'assistant' && idx === messages.length - 1 && (() => {
+                                            const options = parseOptions(getTextFromMessage(m));
+                                            if (options.length === 0) return null;
+                                            return (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {options.map((option, oi) => (
+                                                        <motion.button
+                                                            key={oi}
+                                                            initial={{ opacity: 0, y: 5 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            transition={{ delay: oi * 0.08 }}
+                                                            onClick={async () => {
+                                                                setInput('');
+                                                                if (user?.id) {
+                                                                    const supabase = createClient();
+                                                                    await supabase.from('messages').insert({
+                                                                        user_id: user.id,
+                                                                        content: option,
+                                                                        role: 'user'
+                                                                    });
+                                                                }
+                                                                await sendMessage({ text: option });
+                                                            }}
+                                                            className="px-4 py-2 text-xs font-semibold rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:border-blue-500/50 smooth-transition hover:scale-[1.03] active:scale-[0.97]"
+                                                        >
+                                                            {option}
+                                                        </motion.button>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })()}
                                         {/* Tool Invocations (parts-based for AI SDK 6.x) */}
                                         {(m as any).parts?.filter((p: any) => p.type === 'tool-invocation').map((toolPart: any) => {
                                             const toolCallId = toolPart.toolCallId;
