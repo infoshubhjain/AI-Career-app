@@ -1,6 +1,7 @@
-import { streamText, convertToModelMessages } from 'ai';
+import { streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { generateAndSaveRoadmap } from '@/lib/ai/roadmap-service';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -103,19 +104,15 @@ export async function POST(req: Request) {
         const result = await streamText({
             model: openai('gpt-3.5-turbo'),
             system: systemPrompt,
-            messages: await convertToModelMessages(messages),
+            messages: messages,
             tools: {
                 generateRoadmap: {
                     description: 'Generate a career roadmap for the user based on their goal and level.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            goal: { type: 'string', description: 'The career goal of the user.' },
-                            level: { type: 'string', description: 'The current experience level of the user.' },
-                            context: { type: 'string', description: 'Any additionally gathered context like specific niche, location, time commitment, or constraints.' }
-                        },
-                        required: ['goal', 'level'],
-                    },
+                    inputSchema: z.object({
+                        goal: z.string().describe('The career goal of the user.'),
+                        level: z.string().describe('The current experience level of the user.'),
+                        context: z.string().optional().describe('Any additionally gathered context like specific niche, location, time commitment, or constraints.')
+                    }),
                     execute: async ({ goal, level, context }: { goal: string, level: string, context?: string }) => {
                         console.log('Roadmap generation requested:', { userId, goal, level, context });
                         
@@ -154,15 +151,11 @@ export async function POST(req: Request) {
                 },
                 generateQuiz: {
                     description: 'Generate a short interactive quiz to test the user\'s knowledge on a specific topic. Use this tool when the user has learned something and needs to be tested, or when they explicitly ask for a quiz.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            topic: { type: 'string', description: 'The topic to generate quiz questions about (e.g., "JavaScript fundamentals", "Git version control").' },
-                            difficulty: { type: 'string', description: 'The difficulty level: beginner, intermediate, or advanced.' },
-                            numQuestions: { type: 'number', description: 'Number of questions to generate (3-5).' }
-                        },
-                        required: ['topic', 'difficulty'],
-                    },
+                    inputSchema: z.object({
+                        topic: z.string().describe('The topic to generate quiz questions about (e.g., "JavaScript fundamentals", "Git version control").'),
+                        difficulty: z.enum(['beginner', 'intermediate', 'advanced']).describe('The difficulty level: beginner, intermediate, or advanced.'),
+                        numQuestions: z.number().optional().describe('Number of questions to generate (3-5).')
+                    }),
                     execute: async ({ topic, difficulty, numQuestions }: { topic: string, difficulty: string, numQuestions?: number }) => {
                         const count = Math.min(Math.max(numQuestions || 3, 2), 5);
                         // Use the AI provider to generate quiz questions
