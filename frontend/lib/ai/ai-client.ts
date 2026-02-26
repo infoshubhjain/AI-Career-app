@@ -1,3 +1,4 @@
-import { google } from '@ai-sdk/google';
+import { openai } from '@ai-sdk/openai';
 
-export const googleAI = google('gemini-1.5-pro-latest');
+// Standard initialization for the stable @ai-sdk/openai version
+export const aiProvider = openai('gpt-4o-mini');

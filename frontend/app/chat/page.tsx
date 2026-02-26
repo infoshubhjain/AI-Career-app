@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '@/contexts/auth-context'
-import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard } from 'lucide-react'
+import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard, Target, Brain } from 'lucide-react'
 import Link from 'next/link'
 import { Message, UserProfile } from '@/types'
 import { useChat } from '@ai-sdk/react'
@@ -11,16 +11,42 @@ import { DashboardSection } from './components/DashboardSection'
 import { createClient } from '@/lib/supabase/client'
 import { QuizOverlay, QuizQuestion } from './components/QuizOverlay'
 import { motion, AnimatePresence } from 'framer-motion'
+import ReactMarkdown from 'react-markdown'
 
 function getTextFromMessage(m: any): string {
-    if (m.content) return m.content;
-    if (m.parts) {
+    if (typeof m.content === 'string') {
+        return m.content;
+    }
+    // Fallback if Vercel SDK parses parts into the content field unexpectedly or if the db mapped it this way
+    if (Array.isArray(m.parts)) {
         return m.parts
             .filter((p: any) => p.type === 'text')
             .map((p: any) => p.text)
             .join('\n');
     }
+    // Handle Vercel CoreMessage 'content' array parts
+    if (Array.isArray(m.content)) {
+        return m.content
+            .filter((p: any) => p.type === 'text')
+            .map((p: any) => p.text)
+            .join('\n');
+    }
     return '';
+}
+
+/* ─── Quick Reply Options parser ─── */
+const OPTIONS_REGEX = /\[OPTIONS:\s*(.+?)\]/g;
+
+function parseOptions(text: string): string[] {
+    const matches = [...text.matchAll(OPTIONS_REGEX)];
+    if (matches.length === 0) return [];
+    // Take the last OPTIONS block (in case there are multiple)
+    const lastMatch = matches[matches.length - 1];
+    return lastMatch[1].split('|').map(o => o.trim()).filter(Boolean);
+}
+
+function getCleanText(text: string): string {
+    return text.replace(OPTIONS_REGEX, '').trim();
 }
 
 export default function ChatPage() {
@@ -73,25 +99,16 @@ export default function ChatPage() {
                 })
             }
 
-            // Check for mock quiz trigger in content
-            if (content.includes('TRIGGER_QUIZ')) {
-                const mockQuestions: QuizQuestion[] = [
-                    {
-                        id: 'q1',
-                        question: "What is the primary role of a Software Engineer?",
-                        options: ["Designing UI", "Writing and maintaining code", "Managing sales", "Recruiting"],
-                        correctAnswer: 1,
-                        explanation: "Software engineers focus on the full lifecycle of software development, primarily writing and maintaining code."
-                    },
-                    {
-                        id: 'q2',
-                        question: "Which of these is a common version control tool?",
-                        options: ["React", "Git", "Node.js", "Tailwind"],
-                        correctAnswer: 1,
-                        explanation: "Git is the industry standard for version control, allowing developers to track changes and collaborate."
+            // Check for quiz tool invocations in the message
+            if (message.toolInvocations) {
+                for (const toolPart of message.toolInvocations) {
+                    if (toolPart.toolName === 'generateQuiz' && toolPart.state === 'result') {
+                        const res = toolPart.result;
+                        if (res?.type === 'quiz' && res?.questions) {
+                            setActiveQuiz(res.questions);
+                        }
                     }
-                ]
-                setActiveQuiz(mockQuestions)
+                }
             }
         }
     })
@@ -145,7 +162,6 @@ export default function ChatPage() {
         }
 
         await sendMessage({
-            role: 'user',
             text: currentInput
         })
     }
@@ -168,7 +184,7 @@ export default function ChatPage() {
             const welcomeMessage: any = {
                 id: 'welcome',
                 role: 'assistant',
-                parts: [{ type: 'text' as const, text: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this? (e.g., complete beginner, some basic knowledge, or switching from a related field?)` }],
+                parts: [{ type: 'text' as const, text: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this?\n\n[OPTIONS: Complete Beginner | Some Basic Knowledge | Switching from Related Field]` }],
                 created_at: new Date().toISOString()
             }
             setMessages([welcomeMessage])
@@ -262,21 +278,125 @@ export default function ChatPage() {
                                             : 'glass-premium dark:glass-premium-dark text-neutral-900 dark:text-white border border-white/30 dark:border-white/10'
                                             }`}
                                     >
-                                        <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                                            {getTextFromMessage(m)}
+                                        <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>li]:mb-1">
+                                            <ReactMarkdown>
+                                                {getCleanText(getTextFromMessage(m))}
+                                            </ReactMarkdown>
                                         </div>
-                                        {m.toolInvocations?.map((toolInvocation: any) => {
-                                            const toolCallId = toolInvocation.toolCallId;
-                                            if (toolInvocation.state === 'result') {
+                                        {/* Quick Reply Option Chips */}
+                                        {m.role === 'assistant' && idx === messages.length - 1 && (() => {
+                                            const options = parseOptions(getTextFromMessage(m));
+                                            if (options.length === 0) return null;
+                                            return (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {options.map((option, oi) => (
+                                                        <motion.button
+                                                            key={oi}
+                                                            initial={{ opacity: 0, y: 5 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            transition={{ delay: oi * 0.08 }}
+                                                            onClick={async () => {
+                                                                setInput('');
+                                                                if (user?.id) {
+                                                                    const supabase = createClient();
+                                                                    await supabase.from('messages').insert({
+                                                                        user_id: user.id,
+                                                                        content: option,
+                                                                        role: 'user'
+                                                                    });
+                                                                }
+                                                                await sendMessage({ text: option });
+                                                            }}
+                                                            className="px-4 py-2 text-xs font-semibold rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:border-blue-500/50 smooth-transition hover:scale-[1.03] active:scale-[0.97]"
+                                                        >
+                                                            {option}
+                                                        </motion.button>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })()}
+                                        {/* Tool Invocations */}
+                                        {m.toolInvocations?.map((toolPart: any) => {
+                                            const toolCallId = toolPart.toolCallId;
+                                            const toolName = toolPart.toolName;
+
+                                            if (toolPart.state === 'result') {
+                                                const res = toolPart.result;
+
+                                                // Quiz Result
+                                                if (toolName === 'generateQuiz' && res?.type === 'quiz') {
+                                                    return (
+                                                        <motion.div
+                                                            key={toolCallId}
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className="mt-3 p-4 bg-gradient-to-br from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 rounded-2xl backdrop-blur-md shadow-lg shadow-emerald-900/20"
+                                                        >
+                                                            <div className="flex items-center space-x-3 mb-3">
+                                                                <div className="p-2 bg-emerald-500/20 rounded-full">
+                                                                    <Brain className="w-5 h-5 text-emerald-400" />
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <h4 className="font-bold text-white text-sm">Quiz Ready!</h4>
+                                                                    <p className="text-xs text-emerald-200/70">{res?.message || `${res?.questions?.length} questions on ${res?.topic}`}</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => setActiveQuiz(res.questions)}
+                                                                className="block w-full text-center py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-semibold rounded-xl smooth-transition shadow-md"
+                                                            >
+                                                                Start Quiz
+                                                            </button>
+                                                        </motion.div>
+                                                    );
+                                                }
+
+                                                // Roadmap Result
                                                 return (
-                                                    <div key={toolCallId} className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs text-blue-400">
-                                                        <strong>Roadmap Created:</strong> {toolInvocation.result.message}
-                                                    </div>
+                                                    <motion.div
+                                                        key={toolCallId}
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        className="mt-3 p-4 bg-gradient-to-br from-blue-900/40 to-purple-900/40 border border-purple-500/30 rounded-2xl backdrop-blur-md shadow-lg shadow-purple-900/20"
+                                                    >
+                                                        <div className="flex items-center space-x-3 mb-3">
+                                                            <div className="p-2 bg-purple-500/20 rounded-full">
+                                                                <Target className="w-5 h-5 text-purple-400" />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <h4 className="font-bold text-white text-sm">Roadmap Generated</h4>
+                                                                <p className="text-xs text-purple-200/70">{res?.message || 'Your personalized career path is ready.'}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        {res?.preview && (
+                                                            <div className="mb-4 bg-black/20 rounded-xl p-3 border border-white/5 flex items-center justify-between">
+                                                                <div className="text-center px-2">
+                                                                    <div className="text-xl font-bold text-blue-400">{res.preview.total_steps || 100}</div>
+                                                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider">Steps</div>
+                                                                </div>
+                                                                <div className="w-px h-8 bg-white/10 mx-2"></div>
+                                                                <div className="flex-1 px-2 text-right">
+                                                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">First Milestone</div>
+                                                                    <div className="text-xs font-medium text-white line-clamp-1">{res.preview.next_milestone || 'Foundation'}</div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <Link href="/roadmap" className="block w-full text-center py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-semibold rounded-xl smooth-transition shadow-md shadow-purple-500/20 hover:shadow-purple-500/40">
+                                                            View Full Roadmap
+                                                        </Link>
+                                                    </motion.div>
                                                 );
                                             }
+
+                                            // Loading state
                                             return (
-                                                <div key={toolCallId} className="mt-2 p-2 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-xs animate-pulse">
-                                                    Generating roadmap...
+                                                <div key={toolCallId} className="mt-3 p-4 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl flex items-center space-x-3 border border-white/5 shadow-inner">
+                                                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                                                        {toolName === 'generateQuiz' ? 'Generating your quiz...' : 'Architecting your career path...'}
+                                                    </span>
                                                 </div>
                                             );
                                         })}

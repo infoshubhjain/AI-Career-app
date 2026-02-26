@@ -1,9 +1,32 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server';
-import { generateObject } from 'ai';
-import { googleAI } from './ai-client';
-import { roadmapPrompt } from './prompts';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// Define the backend response structure here since it's not exported from page.tsx suitably
+export interface BackendSubdomain {
+    id: string;
+    domain_id: string;
+    title: string;
+    description: string;
+    order: number;
+}
+
+export interface BackendDomain {
+    id: string;
+    title: string;
+    description: string;
+    order: number;
+    subdomains?: BackendSubdomain[];
+}
+
+export interface BackendRoadmapResponse {
+    query: string;
+    domains: BackendDomain[];
+}
 
 export interface RoadmapStep {
     id: number;
@@ -22,17 +45,73 @@ export interface RoadmapData {
     phases: RoadmapPhase[];
 }
 
-export async function generateAndSaveRoadmap(userId: string, goal: string, level: string) {
+export async function generateAndSaveRoadmap(userId: string, goal: string, level: string, context?: string) {
     const supabase = await createClient();
 
-    // Generate the full roadmap using AI
-    const { object: roadmap } = await generateObject({
-        model: googleAI,
-        prompt: roadmapPrompt(goal, level),
-        output: 'no-schema' as any, // We specify schema in the prompt
+    // Call the backend Roadmap Agent API
+    let query = `${goal}. My current level is: ${level}`;
+    if (context) {
+        query += `. Additional context: ${context}`;
+    }
+
+    let response;
+    try {
+        // We fetch directly because this is a server action, not a client component
+        response = await fetch(`${API_URL}/api/roadmap/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query }),
+        });
+    } catch (fetchErr: any) {
+        const logPath = path.join(process.cwd(), 'debug-fetch-error.log');
+        fs.appendFileSync(logPath, `\n\n--- FETCH ERROR ${new Date().toISOString()} ---\n${String(fetchErr)}\n${fetchErr.stack}\n`);
+        throw new Error(`Fetch to python backend failed: ${fetchErr.message}`);
+    }
+
+    if (!response.ok) {
+        let errorMsg = 'Failed to generate roadmap from backend';
+        try {
+            const errorData = await response.json();
+            errorMsg = errorData.detail || errorData.message || errorMsg;
+        } catch (e) {
+            // ignore
+        }
+        console.error('Backend roadmap generation error:', errorMsg);
+        throw new Error(errorMsg);
+    }
+
+    const roadmapResponse: BackendRoadmapResponse = await response.json();
+
+    // Map the backend structure (domains/subdomains) to the frontend structure (phases/steps)
+    let totalSteps = 0;
+    let globalStepId = 1;
+
+    const phases: RoadmapPhase[] = roadmapResponse.domains.map((domain: BackendDomain) => {
+        const steps: RoadmapStep[] = [];
+        const sortedSubdomains = domain.subdomains ? [...domain.subdomains].sort((a, b) => a.order - b.order) : [];
+
+        sortedSubdomains.forEach(sub => {
+            steps.push({
+                id: globalStepId++,
+                title: sub.title,
+                description: sub.description
+            });
+            totalSteps++;
+        });
+
+        return {
+            title: domain.title,
+            steps
+        };
     });
 
-    const typedRoadmap = (roadmap as unknown) as RoadmapData;
+    const mappedRoadmapData: RoadmapData = {
+        goal: roadmapResponse.query,
+        total_steps: totalSteps,
+        phases: phases
+    };
 
     // Insert into Supabase
     const { data, error } = await supabase
@@ -40,7 +119,7 @@ export async function generateAndSaveRoadmap(userId: string, goal: string, level
         .insert({
             user_id: userId,
             goal: goal,
-            full_roadmap: typedRoadmap,
+            full_roadmap: mappedRoadmapData as any,
             current_step: 1, // Start at step 1
             status: 'active'
         })
