@@ -273,11 +273,6 @@ export default function ChatPage() {
                                     >
                                         <div className="text-sm leading-relaxed whitespace-pre-wrap">
                                             {getTextFromMessage(m)}
-                                            {m.role === 'assistant' && process.env.NODE_ENV === 'development' && (
-                                                <pre className="mt-2 text-[10px] text-gray-500 overflow-x-auto max-w-full">
-                                                    {JSON.stringify(m, null, 2)}
-                                                </pre>
-                                            )}
                                         </div>
                                         {m.toolInvocations?.map((toolInvocation: any) => {
                                             const toolCallId = toolInvocation.toolCallId;

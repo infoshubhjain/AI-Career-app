@@ -1,17 +1,17 @@
-import { streamText } from 'ai';
-import { googleAI } from '@/lib/ai/ai-client';
+import { streamText, jsonSchema, convertToModelMessages } from 'ai';
+import { aiProvider } from '@/lib/ai/ai-client';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { generateAndSaveRoadmap } from '@/lib/ai/roadmap-service';
 import { z } from 'zod';
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
     try {
         const { messages, goal, level, userId } = await req.json();
 
         // Check for Mock Mode
-        const isMockMode = process.env.NEXT_PUBLIC_MOCK_AI === 'true' || !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        const isMockMode = process.env.NEXT_PUBLIC_MOCK_AI === 'true' || !process.env.OPENAI_API_KEY;
 
         if (isMockMode) {
             const lastMsgObj = messages[messages.length - 1];
@@ -40,7 +40,6 @@ export async function POST(req: Request) {
             const encoder = new TextEncoder();
             const stream = new ReadableStream({
                 async start(controller) {
-                    // Send the start of stream sequence if needed, but text chunks are sufficient
                     const chunks = content.split(' ');
                     for (let i = 0; i < chunks.length; i++) {
                         const chunk = chunks[i] + (i < chunks.length - 1 ? ' ' : '');
@@ -58,16 +57,34 @@ export async function POST(req: Request) {
                 }
             });
         }
-        const result = streamText({
-            model: googleAI,
+
+        const normalizedMessages = messages.map((m: any) => ({
+            ...m,
+            parts: m.parts || [{ type: 'text', text: m.content || '' }]
+        }));
+
+        const result = await streamText({
+            model: aiProvider,
             system: systemPrompt,
-            messages,
+            messages: await convertToModelMessages(normalizedMessages),
             tools: {
                 generateRoadmap: {
-                    description: 'Generate a 100-step career roadmap for the user based on their goal and level.',
-                    parameters: z.object({
-                        goal: z.string().describe('The career goal of the user.'),
-                        level: z.string().describe('The current experience level of the user.'),
+                    description: 'Generate a career roadmap for the user based on their goal and level.',
+                    // We use jsonSchema explicitly to bypass the AI SDK's internal Zod conversion
+                    // which is currently causing "type: None" errors on some deployments.
+                    inputSchema: jsonSchema({
+                        type: 'object',
+                        properties: {
+                            goal: {
+                                type: 'string',
+                                description: 'The career goal of the user.'
+                            },
+                            level: {
+                                type: 'string',
+                                description: 'The current experience level of the user.'
+                            },
+                        },
+                        required: ['goal', 'level'],
                     }),
                     execute: async ({ goal, level }: { goal: string, level: string }) => {
                         const roadmap = await generateAndSaveRoadmap(userId, goal, level);
@@ -81,11 +98,11 @@ export async function POST(req: Request) {
                             }
                         };
                     },
-                } as any,
+                },
             },
         });
 
-        return result.toTextStreamResponse();
+        return result.toUIMessageStreamResponse();
     } catch (error) {
         console.error('Chat API Error:', error);
         return new Response(JSON.stringify({ error: 'Failed to process chat' }), {
