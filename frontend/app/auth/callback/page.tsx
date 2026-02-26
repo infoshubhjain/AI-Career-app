@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "../../lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -20,6 +20,13 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     async function handleCallback() {
       try {
+        const supabase = createClient();
+        if (!supabase) {
+          setStatus("error");
+          setMessage("Authentication service unavailable");
+          return;
+        }
+
         // Get the auth code from URL if present
         const code = searchParams.get("code");
         

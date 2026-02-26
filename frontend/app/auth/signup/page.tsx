@@ -2,23 +2,23 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { SignupForm } from "../../components/auth";
-import { useAuth } from "../../context/AuthContext";
+import { SignupForm } from "@/app/components/auth";
+import { useAuth } from "@/contexts/auth-context";
 import Link from "next/link";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, loading } = useAuth();
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (!loading && user) {
       router.push("/");
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [user, loading, router]);
 
   // Show loading while checking auth state
-  if (isLoading) {
+  if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-neutral-200 dark:border-neutral-800 border-t-neutral-900 dark:border-t-neutral-100 rounded-full" />
@@ -27,7 +27,7 @@ export default function SignupPage() {
   }
 
   // Don't render form if authenticated (will redirect)
-  if (isAuthenticated) {
+  if (user) {
     return null;
   }
 
