@@ -166,9 +166,7 @@ export default function ChatPage() {
             })
         }
 
-        await sendMessage({
-            text: currentInput
-        })
+        await sendMessage(currentInput)
     }
 
     const scrollToBottom = () => {
@@ -318,7 +316,7 @@ export default function ChatPage() {
                                                                         role: 'user'
                                                                     });
                                                                 }
-                                                                await sendMessage({ text: option });
+                                                                await sendMessage(option);
                                                             }}
                                                             className="px-4 py-2 text-xs font-semibold rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:border-blue-500/50 smooth-transition hover:scale-[1.03] active:scale-[0.97]"
                                                         >
