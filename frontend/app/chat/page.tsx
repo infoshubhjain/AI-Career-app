@@ -74,10 +74,6 @@ export default function ChatPage() {
     }, [user?.id])
 
     const { messages, sendMessage, status, setMessages, error } = useChat({
-        api: '/api/chat',
-        body: {
-            userId: user?.id || 'anonymous'
-        },
         onFinish: async ({ message }) => {
             const content = getTextFromMessage(message);
 
@@ -166,7 +162,9 @@ export default function ChatPage() {
             })
         }
 
-        await sendMessage(currentInput)
+        await sendMessage({
+            text: currentInput
+        })
     }
 
     const scrollToBottom = () => {
@@ -316,7 +314,7 @@ export default function ChatPage() {
                                                                         role: 'user'
                                                                     });
                                                                 }
-                                                                await sendMessage(option);
+                                                                await sendMessage({ text: option });
                                                             }}
                                                             className="px-4 py-2 text-xs font-semibold rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:border-blue-500/50 smooth-transition hover:scale-[1.03] active:scale-[0.97]"
                                                         >

@@ -15,7 +15,13 @@ export async function POST(req: Request) {
         let messages = body.messages;
         let goal = body.goal;
         let level = body.level;
-        let userId = body.userId; // Use provided user ID
+        let userId = body.userId;
+
+        // If no userId provided, try to get it from the first message or use 'anonymous'
+        if (!userId && messages && messages.length > 0) {
+            // For now, use 'anonymous' - in a real app, you'd get this from auth session
+            userId = 'anonymous';
+        }
 
         // If this is from AI SDK useChat, extract the needed info
         if (!goal && messages && messages.length > 0) {
