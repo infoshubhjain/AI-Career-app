@@ -74,6 +74,10 @@ export default function ChatPage() {
     }, [user?.id])
 
     const { messages, sendMessage, status, setMessages, error } = useChat({
+        api: '/api/chat',
+        body: {
+            userId: user?.id || 'anonymous'
+        },
         onFinish: async ({ message }) => {
             const content = getTextFromMessage(message);
 

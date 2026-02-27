@@ -64,6 +64,16 @@ export async function POST(req: Request) {
                         typeof part === 'string' ? part : part.text || ''
                     ).join('')
                 };
+            } else if (msg.parts && Array.isArray(msg.parts)) {
+                // Handle parts format (from useChat)
+                const textContent = msg.parts
+                    .filter((part: any) => part.type === 'text')
+                    .map((part: any) => part.text)
+                    .join('');
+                return {
+                    ...msg,
+                    content: textContent
+                };
             }
             return msg;
         });
