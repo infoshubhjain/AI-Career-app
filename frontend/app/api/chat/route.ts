@@ -52,6 +52,22 @@ export async function POST(req: Request) {
             });
         }
 
+        // Ensure messages are in the correct format for AI SDK
+        const formattedMessages = messages.map((msg: any) => {
+            if (typeof msg.content === 'string') {
+                return msg;
+            } else if (Array.isArray(msg.content)) {
+                // Handle array content (from useChat)
+                return {
+                    ...msg,
+                    content: msg.content.map((part: any) => 
+                        typeof part === 'string' ? part : part.text || ''
+                    ).join('')
+                };
+            }
+            return msg;
+        });
+
         // Check for Mock Mode
         const isMockMode = process.env.NEXT_PUBLIC_MOCK_AI === 'true' || !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes('placeholder') || process.env.OPENAI_API_KEY.includes('temp_key');
 
@@ -104,7 +120,7 @@ export async function POST(req: Request) {
         const result = await streamText({
             model: openai('gpt-3.5-turbo'),
             system: systemPrompt,
-            messages: messages,
+            messages: formattedMessages,
             tools: {
                 generateRoadmap: {
                     description: 'Generate a career roadmap for the user based on their goal and level.',
