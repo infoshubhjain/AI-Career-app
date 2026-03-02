@@ -73,10 +73,7 @@ export default function ChatPage() {
         }
     }, [user?.id])
 
-    const [input, setInput] = useState('')
-    const { messages, sendMessage, status, setMessages } = useChat({
-        // In AI SDK 6.x, chat options might have changed. 
-        // We ensure profile updates on finish.
+    const { messages, sendMessage, status, setMessages, error } = useChat({
         onFinish: async ({ message }) => {
             const content = getTextFromMessage(message);
 
@@ -100,8 +97,8 @@ export default function ChatPage() {
             }
 
             // Check for quiz tool invocations in the message
-            if (message.toolInvocations) {
-                for (const toolPart of message.toolInvocations) {
+            if ((message as any).toolInvocations) {
+                for (const toolPart of (message as any).toolInvocations) {
                     if (toolPart.toolName === 'generateQuiz' && toolPart.state === 'result') {
                         const res = toolPart.result;
                         if (res?.type === 'quiz' && res?.questions) {
@@ -110,10 +107,14 @@ export default function ChatPage() {
                     }
                 }
             }
+        },
+        onError: (error) => {
+            console.error('Chat error:', error);
         }
     })
 
-    // Fetch messages on mount
+    const [input, setInput] = useState('')
+
     useEffect(() => {
         if (user?.id) {
             const fetchMessages = async () => {
@@ -128,7 +129,7 @@ export default function ChatPage() {
                     const mappedMessages = data.map((m: any) => ({
                         id: m.id.toString(),
                         role: m.role as 'user' | 'assistant',
-                        parts: [{ type: 'text' as const, text: m.content }],
+                        content: m.content,
                         created_at: m.created_at
                     }))
                     setMessages(mappedMessages)
@@ -184,7 +185,7 @@ export default function ChatPage() {
             const welcomeMessage: any = {
                 id: 'welcome',
                 role: 'assistant',
-                parts: [{ type: 'text' as const, text: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this?\n\n[OPTIONS: Complete Beginner | Some Basic Knowledge | Switching from Related Field]` }],
+                content: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this?\n\n[OPTIONS: Complete Beginner | Some Basic Knowledge | Switching from Related Field]`,
                 created_at: new Date().toISOString()
             }
             setMessages([welcomeMessage])
@@ -194,7 +195,7 @@ export default function ChatPage() {
                 const supabase = createClient()
                 supabase.from('messages').insert({
                     user_id: user.id,
-                    content: welcomeMessage.parts[0].text,
+                    content: welcomeMessage.content,
                     role: 'assistant'
                 }).then()
             }
@@ -223,6 +224,14 @@ export default function ChatPage() {
 
                 <div className="flex items-center space-x-3 sm:space-x-6">
                     <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
+                    
+                    {/* Status Indicator */}
+                    <div className="flex items-center space-x-2">
+                        <div className={`w-2 h-2 rounded-full ${status === 'streaming' ? 'bg-green-500 animate-pulse' : status === 'error' || error ? 'bg-red-500' : 'bg-gray-400'}`}></div>
+                        <span className="text-xs text-neutral-600 dark:text-neutral-400">
+                            {status === 'streaming' ? 'AI Thinking...' : status === 'error' || error ? 'Error' : 'Ready'}
+                        </span>
+                    </div>
 
                     <motion.button
                         whileHover={{ scale: 1.05 }}
@@ -316,7 +325,7 @@ export default function ChatPage() {
                                             );
                                         })()}
                                         {/* Tool Invocations */}
-                                        {m.toolInvocations?.map((toolPart: any) => {
+                                        {(m as any).toolInvocations?.map((toolPart: any) => {
                                             const toolCallId = toolPart.toolCallId;
                                             const toolName = toolPart.toolName;
 
@@ -456,6 +465,27 @@ export default function ChatPage() {
                     </motion.button>
                 </form>
             </footer>
+
+            {/* Error Display */}
+            {error && (
+                <div className="fixed bottom-20 left-4 right-4 max-w-md mx-auto p-4 bg-red-500/10 border border-red-500/30 rounded-2xl backdrop-blur-md">
+                    <div className="flex items-center space-x-3">
+                        <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs">!</span>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-red-400 text-sm font-medium">Chat Error</p>
+                            <p className="text-red-300 text-xs">{error.message || 'Failed to send message. Please try again.'}</p>
+                        </div>
+                        <button 
+                            onClick={() => window.location.reload()}
+                            className="text-red-400 hover:text-red-300 text-xs underline"
+                        >
+                            Reload
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {activeQuiz && (
                 <QuizOverlay
