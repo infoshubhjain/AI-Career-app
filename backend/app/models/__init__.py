@@ -8,7 +8,8 @@ from .roadmap import (
     Subdomain,
     DomainsResponse,
     RoadmapResponse,
-    RoadmapListResponse
+    RoadmapListResponse,
+    RoadmapGenerateResponse,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "DomainsResponse",
     "RoadmapResponse",
     "RoadmapListResponse",
+    "RoadmapGenerateResponse",
 ]

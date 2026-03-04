@@ -33,6 +33,12 @@ export interface Roadmap {
   domains: Domain[];
   timestamp?: string;
   filename?: string;
+  existing?: boolean;
+}
+
+interface RoadmapGenerateApiResponse {
+  roadmap: Roadmap;
+  existing: boolean;
 }
 
 /* ─── skeleton loader ─── */
@@ -83,6 +89,7 @@ export default function RoadmapPage() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
   // Load completed steps from localStorage
@@ -133,9 +140,10 @@ export default function RoadmapPage() {
   const handleGenerateRoadmap = async (query: string) => {
     setLoading(true);
     setError(null);
+    setInfoMessage(null);
 
     try {
-      const { data, error } = await api.post<Roadmap>(
+      const { data, error } = await api.post<RoadmapGenerateApiResponse>(
         "/api/roadmap/generate",
         { query },
         { requireAuth: false }
@@ -147,7 +155,11 @@ export default function RoadmapPage() {
       }
 
       if (data) {
-        setLatestRoadmap(data);
+        const roadmap = { ...data.roadmap, existing: data.existing };
+        setLatestRoadmap(roadmap);
+        if (data.existing) {
+          setInfoMessage("Roadmap already exists.");
+        }
         await fetchAllRoadmaps();
       }
     } catch (err) {
@@ -221,6 +233,22 @@ export default function RoadmapPage() {
             >
               <p className="text-red-700 dark:text-red-400 text-sm">
                 <strong>Error:</strong> {error}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Info Display */}
+        <AnimatePresence>
+          {infoMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="mb-8 p-4 rounded-xl bg-blue-500/5 dark:bg-blue-500/10 border border-blue-500/20"
+            >
+              <p className="text-blue-700 dark:text-blue-400 text-sm">
+                {infoMessage}
               </p>
             </motion.div>
           )}

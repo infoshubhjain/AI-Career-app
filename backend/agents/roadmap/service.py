@@ -11,7 +11,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.logging import RoadmapLogger
 from app.models.roadmap import Domain, DomainsResponse, RoadmapResponse, Subdomain
+from services.career_normalizer import CareerNormalizer
+from services.roadmap_retriever import RoadmapRetriever
+from services.roadmap_storage import RoadmapStorage
 from .llm_client import LLMClient
 
 
@@ -27,6 +31,7 @@ Hard requirements:
 5. Every domain must include: id, title, description, order.
 6. IDs must be lowercase-hyphenated.
 7. Domains should not be too broad or too narrow. Their level of broadness should be similar to a university course and should be specific enough to detail what the user will learn within that domain.
+8. Keep description minimal: 2-8 words, phrase only (no full sentence).
 
 JSON shape:
 {{
@@ -53,6 +58,7 @@ Hard requirements:
 6. Every subdomain must include: id, title, description, order.
 7. IDs must be lowercase-hyphenated.
 8. Each skill should be specific enough to be a single topic. One that can be learned in a single University lecture. For advanced domains, these skills should be highly technical.
+9. Keep every description minimal: 2-8 words, phrase only (no full sentence).
 
 JSON shape:
 {{
@@ -98,13 +104,20 @@ def _extract_json(text: str) -> str:
     return cleaned[start : end + 1]
 
 
+def _minify_description(value: str, max_words: int = 8) -> str:
+    words = [w for w in value.strip().split() if w]
+    if not words:
+        return ""
+    return " ".join(words[:max_words])
+
+
 def _normalize_domains(data: dict[str, Any], query: str) -> dict[str, Any]:
     domains = data.get("domains") or []
     normalized: list[dict[str, Any]] = []
 
     for idx, domain in enumerate(domains):
         title = str(domain.get("title") or f"Domain {idx + 1}").strip()
-        description = str(domain.get("description") or "").strip()
+        description = _minify_description(str(domain.get("description") or ""))
         domain_id = str(domain.get("id") or _slugify(title))
 
         normalized.append(
@@ -148,6 +161,9 @@ def _quality_skills(data: dict[str, Any]) -> list[str]:
 class RoadmapAgent:
     def __init__(self) -> None:
         self.llm = LLMClient()
+        self.normalizer = CareerNormalizer()
+        self.retriever = RoadmapRetriever()
+        self.storage = RoadmapStorage()
 
     async def _try_json(self, prompt: str, max_tokens: int) -> AttemptResult:
         try:
@@ -158,6 +174,30 @@ class RoadmapAgent:
             return AttemptResult(data=None, error=str(exc))
 
     async def generate(self, query: str) -> RoadmapResponse:
+        normalized_title = ""
+        retrieval: dict[str, Any] | None = None
+
+        RoadmapLogger.info(event="roadmap_pipeline_start", query=query)
+        try:
+            normalized_title = await self.normalizer.normalize_career(query)
+            RoadmapLogger.info(event="career_normalized", query=query, normalized_title=normalized_title)
+            retrieval = await self.retriever.retrieve_or_new(normalized_title=normalized_title)
+            RoadmapLogger.info(
+                event="roadmap_retrieval_result",
+                normalized_title=normalized_title,
+                status=retrieval.get("status"),
+                distance=retrieval.get("distance"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            RoadmapLogger.error(event="roadmap_retrieval_error", query=query, error=str(exc))
+            retrieval = {"status": "new", "normalized_title": normalized_title}
+
+        if retrieval.get("status") == "exists":
+            stored = retrieval.get("roadmap") or {}
+            response = self._to_response(stored, fallback_query=query)
+            response.existing = True
+            return response
+
         domains_data: dict[str, Any] | None = None
         domains_issues: list[str] = []
         domain_errors: list[str] = []
@@ -212,7 +252,7 @@ class RoadmapAgent:
             normalized_subdomains: list[dict[str, Any]] = []
             for idx, sub in enumerate(subdomains):
                 title = str(sub.get("title") or f"Skill {idx + 1}").strip()
-                description = str(sub.get("description") or "").strip()
+                description = _minify_description(str(sub.get("description") or ""))
                 sub_id = str(sub.get("id") or _slugify(title))
                 normalized_subdomains.append(
                     {
@@ -224,9 +264,32 @@ class RoadmapAgent:
                 )
             domain["subdomains"] = normalized_subdomains
 
-        # Convert through existing API model for response compatibility.
+        response = self._to_response(final_data, fallback_query=query)
+        response.existing = False
+
+        try:
+            title_to_store = normalized_title or query
+            embedding = retrieval.get("embedding") if retrieval else None
+            if embedding is None and title_to_store:
+                from utils.embeddings import generate_embedding  # local import to avoid circular import
+
+                embedding = await generate_embedding(title_to_store)
+            if embedding is not None:
+                await self.storage.insert_roadmap(
+                    career_title=title_to_store,
+                    embedding=embedding,
+                    roadmap_json=response.model_dump(),
+                )
+                RoadmapLogger.info(event="roadmap_stored", career_title=title_to_store)
+        except Exception as exc:  # noqa: BLE001
+            RoadmapLogger.error(event="roadmap_store_error", error=str(exc))
+
+        return response
+
+    def _to_response(self, data: dict[str, Any], fallback_query: str) -> RoadmapResponse:
+        normalized = _normalize_domains(data, fallback_query)
         domains: list[Domain] = []
-        for raw_domain in final_data["domains"]:
+        for raw_domain in normalized["domains"]:
             subdomains = [Subdomain(**item) for item in raw_domain.get("subdomains", [])]
             domains.append(
                 Domain(
@@ -238,5 +301,5 @@ class RoadmapAgent:
                 )
             )
 
-        domains_response = DomainsResponse(query=final_data["query"], domains=domains)
+        domains_response = DomainsResponse(query=normalized["query"], domains=domains)
         return RoadmapResponse(query=domains_response.query, domains=domains_response.domains)

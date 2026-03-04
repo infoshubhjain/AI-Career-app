@@ -11,7 +11,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 from slugify import slugify
 
-from app.models.roadmap import RoadmapGenerateRequest, RoadmapListResponse, RoadmapResponse
+from app.models.roadmap import RoadmapGenerateRequest, RoadmapGenerateResponse, RoadmapListResponse, RoadmapResponse
 from agents.roadmap import RoadmapAgent
 
 
@@ -35,8 +35,8 @@ def _save_roadmap(data: dict, filename: str) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-@router.post("/generate", response_model=RoadmapResponse)
-async def generate_roadmap(request: RoadmapGenerateRequest) -> RoadmapResponse:
+@router.post("/generate", response_model=RoadmapGenerateResponse)
+async def generate_roadmap(request: RoadmapGenerateRequest) -> RoadmapGenerateResponse:
     request_id = str(uuid.uuid4())
     query = request.query.strip()
 
@@ -45,6 +45,8 @@ async def generate_roadmap(request: RoadmapGenerateRequest) -> RoadmapResponse:
 
     try:
         roadmap_response = await agent.generate(query=query)
+        if roadmap_response.existing:
+            return RoadmapGenerateResponse(roadmap=roadmap_response, existing=True)
 
         domains_filename = _generate_filename(query, "domains")
         _save_roadmap(
@@ -68,7 +70,7 @@ async def generate_roadmap(request: RoadmapGenerateRequest) -> RoadmapResponse:
         roadmap_response.filename = final_filename
         _save_roadmap(roadmap_response.model_dump(), final_filename)
 
-        return roadmap_response
+        return RoadmapGenerateResponse(roadmap=roadmap_response, existing=False)
     except ValueError as exc:
         raise HTTPException(
             status_code=422,

@@ -75,10 +75,15 @@ class LLMClient:
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": self.temperature,
-            "max_tokens": max_tokens,
+            "max_completion_tokens": max_tokens,
             "response_format": {"type": "json_object"},
         }
+        # GPT-5 models currently only accept default temperature behavior.
+        if self.model.startswith("gpt-5"):
+            # Bias toward emitting final text instead of spending all output budget on reasoning tokens.
+            payload["reasoning_effort"] = "minimal"
+        else:
+            payload["temperature"] = self.temperature
 
         headers = {
             "Authorization": f"Bearer {settings.OPENAI_API_KEY}",

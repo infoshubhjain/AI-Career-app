@@ -1,32 +1,39 @@
-import requests
-import json
+"""Optional live integration test for roadmap endpoint.
+
+Run only when backend is already running:
+RUN_LIVE_ROADMAP_TEST=1 pytest -q test_roadmap_endpoint.py
+"""
+
+from __future__ import annotations
+
+import os
 import time
 
-API_URL = "http://localhost:8000/api/roadmap/generate"
-payload = {
-    "query": "Become a Data Scientist. My current level is: complete beginner"
-}
-headers = {
-    "Content-Type": "application/json"
-}
+import pytest
+import requests
 
-print("Testing backend roadmap generation with OpenAI key...")
-start_time = time.time()
-response = requests.post(API_URL, json=payload, headers=headers)
-end_time = time.time()
 
-if response.status_code == 200:
+API_URL = os.getenv("ROADMAP_API_URL", "http://localhost:8000/api/roadmap/generate")
+
+
+@pytest.mark.integration
+def test_roadmap_endpoint_live() -> None:
+    if os.getenv("RUN_LIVE_ROADMAP_TEST") != "1":
+        pytest.skip("Set RUN_LIVE_ROADMAP_TEST=1 to run live roadmap endpoint test")
+
+    payload = {"query": "competetive coding"}
+    headers = {"Content-Type": "application/json"}
+
+    start_time = time.time()
+    response = requests.post(API_URL, json=payload, headers=headers, timeout=180)
+    duration = time.time() - start_time
+
+    assert response.status_code == 200, response.text
+
     data = response.json()
-    print(f"\nSuccess! Roadmap generated in {end_time - start_time:.2f} seconds.")
-    print(f"Goal: {data.get('query')}")
-    print(f"Number of domains generated: {len(data.get('domains', []))}")
-    print("\nSample Domains:")
-    for i, domain in enumerate(data.get('domains', [])[:3]):
-        print(f"{i+1}. {domain.get('title')}")
-        print(f"   Subdomains: {len(domain.get('subdomains', []))}")
-else:
-    print(f"\nError ({response.status_code}):")
-    try:
-         print(json.dumps(response.json(), indent=2))
-    except:
-         print(response.text)
+    assert isinstance(data, dict)
+    assert "roadmap" in data
+    assert "existing" in data
+    assert isinstance(data["roadmap"].get("domains", []), list)
+    assert len(data["roadmap"].get("domains", [])) >= 1
+    assert duration < 180

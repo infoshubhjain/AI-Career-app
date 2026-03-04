@@ -28,6 +28,11 @@ export interface BackendRoadmapResponse {
     domains: BackendDomain[];
 }
 
+export interface BackendRoadmapGenerateResponse {
+    roadmap: BackendRoadmapResponse;
+    existing: boolean;
+}
+
 export interface RoadmapStep {
     id: number;
     title: string;
@@ -65,7 +70,9 @@ export async function generateAndSaveRoadmap(userId: string, goal: string, level
         });
 
         if (response.ok) {
-            const roadmapResponse: BackendRoadmapResponse = await response.json();
+            const payload: BackendRoadmapGenerateResponse | BackendRoadmapResponse = await response.json();
+            const roadmapResponse: BackendRoadmapResponse =
+                "roadmap" in payload ? payload.roadmap : payload;
             
             // Map the backend structure (domains/subdomains) to the frontend structure (phases/steps)
             let totalSteps = 0;

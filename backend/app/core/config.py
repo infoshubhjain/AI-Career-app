@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     OPENROUTER_SITE_URL: str = ""
     OPENROUTER_SITE_NAME: str = ""
 
+    # Supabase vector reuse threshold
+    ROADMAP_MATCH_THRESHOLD: float = 0.1
+    # Deprecated local PostgreSQL vars kept for backward compatibility with existing .env files.
+    POSTGRES_HOST: str = ""
+    POSTGRES_PORT: int = 0
+    POSTGRES_DB: str = ""
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
+
     # JWT
     JWT_SECRET_KEY: str = "change-me"
     JWT_ALGORITHM: str = "HS256"
@@ -63,4 +72,3 @@ def get_settings() -> Settings:
 
 # Global settings instance
 settings = get_settings()
-

@@ -40,8 +40,15 @@ class RoadmapResponse(BaseModel):
     domains: List[Domain] = Field(..., description="List of domains with subdomains")
     timestamp: Optional[str] = Field(default=None, description="Timestamp of generation")
     filename: Optional[str] = Field(default=None, description="Filename of saved roadmap")
+    existing: Optional[bool] = Field(default=False, description="Whether roadmap was reused from storage")
 
 
 class RoadmapListResponse(BaseModel):
     """Response for listing all roadmaps"""
     roadmaps: List[RoadmapResponse] = Field(..., description="List of all roadmaps")
+
+
+class RoadmapGenerateResponse(BaseModel):
+    """Response for generate endpoint with reuse metadata"""
+    roadmap: RoadmapResponse = Field(..., description="Generated or reused roadmap payload")
+    existing: bool = Field(default=False, description="Whether roadmap was reused from storage")
