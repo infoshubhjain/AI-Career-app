@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
     OPENROUTER_SITE_URL: str = ""
     OPENROUTER_SITE_NAME: str = ""
+    AGENT_REACT_MAX_STEPS: int = 4
+    WEB_SEARCH_MAX_RESULTS: int = 5
 
     # Supabase vector reuse threshold
     ROADMAP_MATCH_THRESHOLD: float = 0.1

@@ -1,6 +1,4 @@
-"""
-Structured logging utilities for roadmap generation tracing.
-"""
+"""Structured logging utilities for roadmap and agent tracing."""
 
 from __future__ import annotations
 
@@ -14,7 +12,7 @@ from typing import Any
 LOGS_DIR = Path(__file__).resolve().parents[2] / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
-_logger = logging.getLogger("roadmap_trace")
+_logger = logging.getLogger("career_app_trace")
 _logger.setLevel(logging.INFO)
 
 if not _logger.handlers:
@@ -28,7 +26,7 @@ if not _logger.handlers:
     _logger.addHandler(console_handler)
 
 
-class RoadmapLogger:
+class AgentLogger:
     @staticmethod
     def _emit(event: str, level: str = "INFO", **fields: Any) -> None:
         payload = {
@@ -51,9 +49,12 @@ class RoadmapLogger:
 
     @staticmethod
     def info(event: str, **fields: Any) -> None:
-        RoadmapLogger._emit(event=event, level="INFO", **fields)
+        AgentLogger._emit(event=event, level="INFO", **fields)
 
     @staticmethod
     def error(event: str, **fields: Any) -> None:
-        RoadmapLogger._emit(event=event, level="ERROR", **fields)
+        AgentLogger._emit(event=event, level="ERROR", **fields)
 
+
+class RoadmapLogger(AgentLogger):
+    """Backward-compatible alias for the existing roadmap pipeline."""

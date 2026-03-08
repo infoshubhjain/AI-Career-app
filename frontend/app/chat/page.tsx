@@ -1,526 +1,432 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { useAuth } from '@/contexts/auth-context'
-import { Send, User as UserIcon, Bot, ArrowLeft, LayoutDashboard, Target, Brain } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Message, UserProfile } from '@/types'
-import { useChat } from '@ai-sdk/react'
-import { ProgressionHeader } from './components/ProgressionHeader'
-import { DashboardSection } from './components/DashboardSection'
-import { createClient } from '@/lib/supabase/client'
-import { QuizOverlay, QuizQuestion } from './components/QuizOverlay'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
+import { ArrowLeft, Bot, LayoutDashboard, Radar, Send, Target, User as UserIcon } from 'lucide-react'
 
-function getTextFromMessage(m: any): string {
-    if (typeof m.content === 'string') {
-        return m.content;
-    }
-    // Fallback if Vercel SDK parses parts into the content field unexpectedly or if the db mapped it this way
-    if (Array.isArray(m.parts)) {
-        return m.parts
-            .filter((p: any) => p.type === 'text')
-            .map((p: any) => p.text)
-            .join('\n');
-    }
-    // Handle Vercel CoreMessage 'content' array parts
-    if (Array.isArray(m.content)) {
-        return m.content
-            .filter((p: any) => p.type === 'text')
-            .map((p: any) => p.text)
-            .join('\n');
-    }
-    return '';
+import { useAuth } from '@/contexts/auth-context'
+import { createClient } from '@/lib/supabase/client'
+import { createAgentSession, sendAgentMessage } from '@/app/lib/agent-api'
+import { DashboardSection } from './components/DashboardSection'
+import { ProgressionHeader } from './components/ProgressionHeader'
+import { AgentRoadmapDomain, AgentRoadmapSkill, AgentSessionResponse, UserProfile } from '@/types'
+
+type TimelineMessage = {
+    id: string
+    role: 'user' | 'assistant' | 'system'
+    content: string
+    createdAt: string
 }
 
-/* ─── Quick Reply Options parser ─── */
-const OPTIONS_REGEX = /\[OPTIONS:\s*(.+?)\]/g;
-
-function parseOptions(text: string): string[] {
-    const matches = [...text.matchAll(OPTIONS_REGEX)];
-    if (matches.length === 0) return [];
-    // Take the last OPTIONS block (in case there are multiple)
-    const lastMatch = matches[matches.length - 1];
-    return lastMatch[1].split('|').map(o => o.trim()).filter(Boolean);
+const STORAGE_KEYS = {
+    session: 'agent_session_snapshot',
+    messages: 'agent_transcript_snapshot',
 }
 
-function getCleanText(text: string): string {
-    return text.replace(OPTIONS_REGEX, '').trim();
+function logPipeline(event: string, payload?: unknown) {
+    console.groupCollapsed(`[agent-chat] ${event}`)
+    if (payload !== undefined) console.log(payload)
+    console.groupEnd()
+}
+
+function getCurrentDomain(session: AgentSessionResponse | null): AgentRoadmapDomain | null {
+    const domains = session?.roadmap?.domains || []
+    const domainIndex = session?.state?.roadmap_progress?.domain_index ?? 0
+    return domains[domainIndex] || null
+}
+
+function getCurrentSkill(session: AgentSessionResponse | null): AgentRoadmapSkill | null {
+    const domain = getCurrentDomain(session)
+    const skillIndex = session?.state?.roadmap_progress?.skill_index ?? 0
+    return domain?.subdomains?.[skillIndex] || null
+}
+
+function getCurrentTopic(session: AgentSessionResponse | null): Record<string, unknown> | null {
+    const lessonPlan = session?.state?.lesson_plan || []
+    const topicIndex = session?.state?.current_topic_index ?? 0
+    return lessonPlan[topicIndex] || null
+}
+
+function buildAssistantMessage(response: AgentSessionResponse): TimelineMessage {
+    return {
+        id: `${response.session_id}-${Date.now()}`,
+        role: 'assistant',
+        content: response.message,
+        createdAt: new Date().toISOString(),
+    }
+}
+
+function statusTone(status: string) {
+    if (status.includes('quiz')) return 'bg-amber-500/15 text-amber-700 dark:text-amber-200 border-amber-400/30'
+    if (status.includes('knowledge')) return 'bg-blue-500/15 text-blue-700 dark:text-blue-200 border-blue-400/30'
+    if (status.includes('teach')) return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200 border-emerald-400/30'
+    if (status.includes('profile')) return 'bg-sky-500/15 text-sky-700 dark:text-sky-200 border-sky-400/30'
+    if (status === 'completed') return 'bg-purple-500/15 text-purple-700 dark:text-purple-200 border-purple-400/30'
+    return 'bg-white/50 dark:bg-neutral-800/50 text-neutral-700 dark:text-neutral-200 border-white/20 dark:border-white/10'
+}
+
+function inputPlaceholder(session: AgentSessionResponse | null) {
+    if (!session) return 'Describe the career path you want to pursue...'
+    if (session.status === 'awaiting_profile') return 'Answer the onboarding questions...'
+    if (session.status === 'awaiting_knowledge_answer') return 'Answer the technical checkpoint question...'
+    if (session.status === 'awaiting_topic_followup') return "Ask a follow-up question or type 'ready'..."
+    if (session.status.includes('quiz')) return 'Answer the quiz prompt...'
+    return 'Type your message...'
 }
 
 export default function ChatPage() {
     const { user, loading } = useAuth()
     const [profile, setProfile] = useState<UserProfile | null>(null)
-    const [goal, setGoal] = useState<string | null>(null)
+    const [session, setSession] = useState<AgentSessionResponse | null>(null)
+    const [messages, setMessages] = useState<TimelineMessage[]>([])
+    const [input, setInput] = useState('')
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState<string | null>(null)
     const [isDashboardOpen, setIsDashboardOpen] = useState(false)
-    const [activeQuiz, setActiveQuiz] = useState<QuizQuestion[] | null>(null)
+    const [hasBootstrappedGoal, setHasBootstrappedGoal] = useState(false)
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    // Fetch profile on mount
+    useEffect(() => {
+        const rawSession = sessionStorage.getItem(STORAGE_KEYS.session)
+        const rawMessages = sessionStorage.getItem(STORAGE_KEYS.messages)
+        if (rawSession) {
+            try {
+                const parsed = JSON.parse(rawSession) as AgentSessionResponse
+                setSession(parsed)
+                logPipeline('session_snapshot_restored', parsed)
+            } catch (restoreError) {
+                console.error('Failed to restore session snapshot', restoreError)
+            }
+        }
+        if (rawMessages) {
+            try {
+                const parsed = JSON.parse(rawMessages) as TimelineMessage[]
+                setMessages(parsed)
+            } catch (restoreError) {
+                console.error('Failed to restore transcript snapshot', restoreError)
+            }
+        }
+    }, [])
+
+    useEffect(() => {
+        if (!session) return
+        sessionStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session))
+    }, [session])
+
+    useEffect(() => {
+        sessionStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages))
+    }, [messages])
+
     useEffect(() => {
         if (user?.id) {
             const fetchProfile = async () => {
                 const supabase = createClient()
-                const { data } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', user.id)
-                    .single()
+                if (!supabase) return
+                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
                 setProfile(data)
             }
             fetchProfile()
         }
     }, [user?.id])
 
-    const { messages, sendMessage, status, setMessages, error } = useChat({
-        onFinish: async ({ message }) => {
-            const content = getTextFromMessage(message);
-
-            if (profile) {
-                const newXP = profile.xp + 10
-                setProfile(prev => prev ? { ...prev, xp: newXP } : null)
-
-                // Save XP to database
-                const supabase = createClient()
-                await supabase.from('profiles').update({ xp: newXP }).eq('id', user?.id)
-            }
-
-            // Persistence: Save bot message to messages table
-            if (user?.id) {
-                const supabase = createClient()
-                await supabase.from('messages').insert({
-                    user_id: user.id,
-                    content: content,
-                    role: 'assistant'
-                })
-            }
-
-            // Check for quiz tool invocations in the message
-            if ((message as any).toolInvocations) {
-                for (const toolPart of (message as any).toolInvocations) {
-                    if (toolPart.toolName === 'generateQuiz' && toolPart.state === 'result') {
-                        const res = toolPart.result;
-                        if (res?.type === 'quiz' && res?.questions) {
-                            setActiveQuiz(res.questions);
-                        }
-                    }
-                }
-            }
-        },
-        onError: (error) => {
-            console.error('Chat error:', error);
-        }
-    })
-
-    const [input, setInput] = useState('')
-
     useEffect(() => {
-        if (user?.id) {
-            const fetchMessages = async () => {
-                const supabase = createClient()
-                const { data } = await supabase
-                    .from('messages')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: true })
-
-                if (data && data.length > 0) {
-                    const mappedMessages = data.map((m: any) => ({
-                        id: m.id.toString(),
-                        role: m.role as 'user' | 'assistant',
-                        content: m.content,
-                        created_at: m.created_at
-                    }))
-                    setMessages(mappedMessages)
-                }
-            }
-            fetchMessages()
-        }
-    }, [user?.id, setMessages])
-
-    const isTyping = status === 'streaming' || status === 'submitted'
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setInput(e.target.value)
-    }
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!input.trim() || isTyping) return
-
-        const currentInput = input
-        setInput('')
-
-        // Persistence: Save user message
-        if (user?.id) {
-            const supabase = createClient()
-            await supabase.from('messages').insert({
-                user_id: user.id,
-                content: currentInput,
-                role: 'user'
-            })
-        }
-
-        await sendMessage({
-            text: currentInput
-        })
-    }
-
-    const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-
-    useEffect(() => {
-        scrollToBottom()
     }, [messages])
 
-    // Initiate conversation from landing page goal
     useEffect(() => {
-        const storedGoal = sessionStorage.getItem("career_goal")
-        if (storedGoal && !goal) {
-            setGoal(storedGoal)
-            sessionStorage.removeItem("career_goal")
+        if (!user?.id || hasBootstrappedGoal || session) return
+        const storedGoal = sessionStorage.getItem('career_goal')
+        if (!storedGoal) return
 
-            const welcomeMessage: any = {
-                id: 'welcome',
-                role: 'assistant',
-                content: `I see you want to become a **${storedGoal}**. That's an excellent choice! \n\nI'm building your personalized roadmap right now. To make it perfect, tell me: what's your current experience level with this?\n\n[OPTIONS: Complete Beginner | Some Basic Knowledge | Switching from Related Field]`,
-                created_at: new Date().toISOString()
-            }
-            setMessages([welcomeMessage])
-
-            // Persistence: Save welcome message
-            if (user?.id) {
-                const supabase = createClient()
-                supabase.from('messages').insert({
-                    user_id: user.id,
-                    content: welcomeMessage.content,
-                    role: 'assistant'
-                }).then()
-            }
+        setHasBootstrappedGoal(true)
+        sessionStorage.removeItem('career_goal')
+        const bootMessage: TimelineMessage = {
+            id: `goal-${Date.now()}`,
+            role: 'user',
+            content: storedGoal,
+            createdAt: new Date().toISOString(),
         }
-    }, [goal, setMessages, user?.id])
+        setMessages(prev => [...prev, bootMessage])
+        void startSession(storedGoal)
+    }, [hasBootstrappedGoal, session, user?.id])
 
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-neutral-900 dark:border-white"></div>
-        </div>
-    )
+    const currentDomain = useMemo(() => getCurrentDomain(session), [session])
+    const currentSkill = useMemo(() => getCurrentSkill(session), [session])
+    const currentTopic = useMemo(() => getCurrentTopic(session), [session])
+
+    async function startSession(query: string) {
+        if (!user?.id) {
+            setError('You need to be logged in to start an agent session.')
+            return
+        }
+        setBusy(true)
+        setError(null)
+        logPipeline('create_session_start', { query, userId: user.id })
+        const { data, error: requestError } = await createAgentSession(user.id, query)
+        if (requestError || !data) {
+            console.error('Failed to create agent session', requestError)
+            setError(requestError || 'Failed to create session')
+            setBusy(false)
+            return
+        }
+        logPipeline('create_session_success', data)
+        setSession(data)
+        setMessages(prev => [...prev, buildAssistantMessage(data)])
+        setBusy(false)
+    }
+
+    async function continueSession(message: string) {
+        if (!session || !user?.id) return
+        setBusy(true)
+        setError(null)
+        logPipeline('turn_send', { sessionId: session.session_id, status: session.status, activeAgent: session.active_agent, message })
+        const { data, error: requestError } = await sendAgentMessage(session.session_id, user.id, message)
+        if (requestError || !data) {
+            console.error('Failed to continue agent session', requestError)
+            setError(requestError || 'Failed to send message')
+            setBusy(false)
+            return
+        }
+        logPipeline('turn_response', data)
+        setSession(data)
+        setMessages(prev => [...prev, buildAssistantMessage(data)])
+        setBusy(false)
+
+        if (profile) {
+            const newXP = profile.xp + 10
+            setProfile(prev => (prev ? { ...prev, xp: newXP } : null))
+            const supabase = createClient()
+            if (supabase) await supabase.from('profiles').update({ xp: newXP }).eq('id', user.id)
+        }
+    }
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        const trimmed = input.trim()
+        if (!trimmed || busy) return
+
+        const userMessage: TimelineMessage = {
+            id: `user-${Date.now()}`,
+            role: 'user',
+            content: trimmed,
+            createdAt: new Date().toISOString(),
+        }
+        setMessages(prev => [...prev, userMessage])
+        setInput('')
+
+        if (!session) {
+            await startSession(trimmed)
+            return
+        }
+        await continueSession(trimmed)
+    }
+
+    function resetChat() {
+        logPipeline('session_reset')
+        setSession(null)
+        setMessages([])
+        setInput('')
+        setError(null)
+        sessionStorage.removeItem(STORAGE_KEYS.session)
+        sessionStorage.removeItem(STORAGE_KEYS.messages)
+    }
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-neutral-900 dark:border-white"></div>
+            </div>
+        )
+    }
+
+    if (!user) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-neutral-50 via-blue-50/20 to-purple-50/10 dark:from-neutral-950 dark:via-blue-950/10 dark:to-purple-950/5">
+                <div className="max-w-md rounded-[2rem] glass-premium dark:glass-premium-dark border border-white/20 dark:border-white/10 p-8 text-center">
+                    <h1 className="text-2xl font-semibold text-neutral-900 dark:text-white">Sign in to start your learning session</h1>
+                    <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">
+                        The new chat flow is session-based and stores your roadmap, assessments, and memory snapshots per user.
+                    </p>
+                    <Link href="/auth/login" className="mt-6 inline-flex items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg">
+                        Go to Login
+                    </Link>
+                </div>
+            </div>
+        )
+    }
 
     return (
-        <div className="flex flex-col h-screen bg-gradient-to-br from-neutral-50 via-blue-50/20 to-purple-50/10 dark:from-neutral-950 dark:via-blue-950/10 dark:to-purple-950/5">
-            {/* Header */}
+        <div className="flex flex-col min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/20 to-purple-50/10 dark:from-neutral-950 dark:via-blue-950/10 dark:to-purple-950/5">
             <header className="flex items-center justify-between px-4 sm:px-6 py-4 glass-premium dark:glass-premium-dark border-b border-white/20 dark:border-white/10 sticky top-0 z-30 backdrop-blur-xl">
-                <div className="flex items-center space-x-3 sm:space-x-4">
-                    <Link href="/" className="p-2 hover:bg-white/50 dark:hover:bg-neutral-800/50 rounded-full smooth-transition">
-                        <ArrowLeft className="w-5 h-5" />
-                    </Link>
-                    <div>
-                        <h1 className="font-bold text-base sm:text-lg hidden sm:block bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">Career Tutor</h1>
-                        <p className="text-[10px] text-neutral-600 dark:text-neutral-400 uppercase tracking-wider font-semibold">Roadmap Path</p>
-                    </div>
-                </div>
-
-                <div className="flex items-center space-x-3 sm:space-x-6">
-                    <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
-                    
-                    {/* Status Indicator */}
-                    <div className="flex items-center space-x-2">
-                        <div className={`w-2 h-2 rounded-full ${status === 'streaming' ? 'bg-green-500 animate-pulse' : status === 'error' || error ? 'bg-red-500' : 'bg-gray-400'}`}></div>
-                        <span className="text-xs text-neutral-600 dark:text-neutral-400">
-                            {status === 'streaming' ? 'AI Thinking...' : status === 'error' || error ? 'Error' : 'Ready'}
-                        </span>
+                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 w-full">
+                    <div className="flex items-center gap-3">
+                        <Link href="/" className="p-2 hover:bg-white/50 dark:hover:bg-neutral-800/50 rounded-full smooth-transition">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Link>
+                        <div>
+                            <h1 className="font-bold text-base sm:text-lg hidden sm:block bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">Career Tutor</h1>
+                            <p className="text-[10px] text-neutral-600 dark:text-neutral-400 uppercase tracking-wider font-semibold">Roadmap Path</p>
+                        </div>
                     </div>
 
-                    <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setIsDashboardOpen(true)}
-                        className="p-2.5 bg-white/50 dark:bg-neutral-800/50 rounded-full hover:bg-white dark:hover:bg-neutral-800 smooth-transition shadow-sm hover:shadow-md"
-                    >
-                        <LayoutDashboard className="w-5 h-5" />
-                    </motion.button>
-
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold shadow-md">
-                        {user?.email?.charAt(0).toUpperCase() || 'U'}
+                    <div className="flex items-center gap-4">
+                        <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
+                        <div className={`hidden rounded-full border px-3 py-1 text-xs font-semibold sm:block ${statusTone(session?.status || 'idle')}`}>
+                            {busy ? 'Processing' : session?.status || 'idle'}
+                        </div>
+                        <button onClick={() => setIsDashboardOpen(true)} className="p-2.5 bg-white/50 dark:bg-neutral-800/50 rounded-full hover:bg-white dark:hover:bg-neutral-800 smooth-transition shadow-sm hover:shadow-md">
+                            <LayoutDashboard className="h-5 w-5" />
+                        </button>
                     </div>
                 </div>
             </header>
 
-            {/* Messages Area */}
-            <main className="flex-1 overflow-y-auto p-6 space-y-6">
-                <AnimatePresence initial={false}>
-                    {messages.length === 0 ? (
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="h-full flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto"
-                        >
-                            <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-2xl">
-                                <Bot className="w-10 h-10 text-neutral-600 dark:text-neutral-300" />
+            <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] w-full">
+                <section className="overflow-hidden rounded-[2rem] glass-premium dark:glass-premium-dark border border-white/30 dark:border-white/10 shadow-xl">
+                    <div className="border-b border-white/20 dark:border-white/10 px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-700 dark:text-blue-200">
+                                {session?.active_agent || 'orchestrator'}
                             </div>
-                            <h2 className="text-2xl font-bold">Start your journey</h2>
-                            <p className="text-neutral-600 dark:text-neutral-400">
-                                Tell me more about what you want to achieve, and I'll build a personalized roadmap for you.
-                            </p>
-                        </motion.div>
-                    ) : (
-                        messages.map((m: any, idx: number) => (
-                            <motion.div
-                                key={m.id || idx}
-                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                transition={{ duration: 0.3 }}
-                                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div
-                                    className={`flex max-w-[90%] sm:max-w-[85%] space-x-3 ${m.role === 'user' ? 'flex-row-reverse space-x-reverse' : 'flex-row'}`}
-                                >
-                                    <div className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center shadow-md ${m.role === 'user' ? 'bg-gradient-to-br from-neutral-800 to-neutral-900 dark:from-neutral-100 dark:to-neutral-200 text-white dark:text-neutral-900' : 'bg-gradient-to-br from-blue-500 to-purple-500 text-white'
-                                        }`}>
-                                        {m.role === 'user' ? <UserIcon className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                                    </div>
-                                    <div
-                                        className={`px-5 py-3.5 rounded-2xl shadow-sm ${m.role === 'user'
-                                            ? 'bg-gradient-to-br from-neutral-900 to-neutral-800 dark:from-neutral-100 dark:to-neutral-50 text-white dark:text-neutral-900 shadow-md'
-                                            : 'glass-premium dark:glass-premium-dark text-neutral-900 dark:text-white border border-white/30 dark:border-white/10'
-                                            }`}
-                                    >
-                                        <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>li]:mb-1">
-                                            <ReactMarkdown>
-                                                {getCleanText(getTextFromMessage(m))}
-                                            </ReactMarkdown>
-                                        </div>
-                                        {/* Quick Reply Option Chips */}
-                                        {m.role === 'assistant' && idx === messages.length - 1 && (() => {
-                                            const options = parseOptions(getTextFromMessage(m));
-                                            if (options.length === 0) return null;
-                                            return (
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    {options.map((option, oi) => (
-                                                        <motion.button
-                                                            key={oi}
-                                                            initial={{ opacity: 0, y: 5 }}
-                                                            animate={{ opacity: 1, y: 0 }}
-                                                            transition={{ delay: oi * 0.08 }}
-                                                            onClick={async () => {
-                                                                setInput('');
-                                                                if (user?.id) {
-                                                                    const supabase = createClient();
-                                                                    await supabase.from('messages').insert({
-                                                                        user_id: user.id,
-                                                                        content: option,
-                                                                        role: 'user'
-                                                                    });
-                                                                }
-                                                                await sendMessage({ text: option });
-                                                            }}
-                                                            className="px-4 py-2 text-xs font-semibold rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 hover:border-blue-500/50 smooth-transition hover:scale-[1.03] active:scale-[0.97]"
-                                                        >
-                                                            {option}
-                                                        </motion.button>
-                                                    ))}
-                                                </div>
-                                            );
-                                        })()}
-                                        {/* Tool Invocations */}
-                                        {(m as any).toolInvocations?.map((toolPart: any) => {
-                                            const toolCallId = toolPart.toolCallId;
-                                            const toolName = toolPart.toolName;
-
-                                            if (toolPart.state === 'result') {
-                                                const res = toolPart.result;
-
-                                                // Quiz Result
-                                                if (toolName === 'generateQuiz' && res?.type === 'quiz') {
-                                                    return (
-                                                        <motion.div
-                                                            key={toolCallId}
-                                                            initial={{ opacity: 0, y: 10 }}
-                                                            animate={{ opacity: 1, y: 0 }}
-                                                            className="mt-3 p-4 bg-gradient-to-br from-emerald-900/40 to-teal-900/40 border border-emerald-500/30 rounded-2xl backdrop-blur-md shadow-lg shadow-emerald-900/20"
-                                                        >
-                                                            <div className="flex items-center space-x-3 mb-3">
-                                                                <div className="p-2 bg-emerald-500/20 rounded-full">
-                                                                    <Brain className="w-5 h-5 text-emerald-400" />
-                                                                </div>
-                                                                <div className="flex-1">
-                                                                    <h4 className="font-bold text-white text-sm">Quiz Ready!</h4>
-                                                                    <p className="text-xs text-emerald-200/70">{res?.message || `${res?.questions?.length} questions on ${res?.topic}`}</p>
-                                                                </div>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => setActiveQuiz(res.questions)}
-                                                                className="block w-full text-center py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-semibold rounded-xl smooth-transition shadow-md"
-                                                            >
-                                                                Start Quiz
-                                                            </button>
-                                                        </motion.div>
-                                                    );
-                                                }
-
-                                                // Roadmap Result
-                                                return (
-                                                    <motion.div
-                                                        key={toolCallId}
-                                                        initial={{ opacity: 0, y: 10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        className="mt-3 p-4 bg-gradient-to-br from-blue-900/40 to-purple-900/40 border border-purple-500/30 rounded-2xl backdrop-blur-md shadow-lg shadow-purple-900/20"
-                                                    >
-                                                        <div className="flex items-center space-x-3 mb-3">
-                                                            <div className="p-2 bg-purple-500/20 rounded-full">
-                                                                <Target className="w-5 h-5 text-purple-400" />
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <h4 className="font-bold text-white text-sm">Roadmap Generated</h4>
-                                                                <p className="text-xs text-purple-200/70">{res?.message || 'Your personalized career path is ready.'}</p>
-                                                            </div>
-                                                        </div>
-
-                                                        {res?.preview && (
-                                                            <div className="mb-4 bg-black/20 rounded-xl p-3 border border-white/5 flex items-center justify-between">
-                                                                <div className="text-center px-2">
-                                                                    <div className="text-xl font-bold text-blue-400">{res.preview.total_steps || 100}</div>
-                                                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider">Steps</div>
-                                                                </div>
-                                                                <div className="w-px h-8 bg-white/10 mx-2"></div>
-                                                                <div className="flex-1 px-2 text-right">
-                                                                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">First Milestone</div>
-                                                                    <div className="text-xs font-medium text-white line-clamp-1">{res.preview.next_milestone || 'Foundation'}</div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        <Link href="/roadmap" className="block w-full text-center py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-semibold rounded-xl smooth-transition shadow-md shadow-purple-500/20 hover:shadow-purple-500/40">
-                                                            View Full Roadmap
-                                                        </Link>
-                                                    </motion.div>
-                                                );
-                                            }
-
-                                            // Loading state
-                                            return (
-                                                <div key={toolCallId} className="mt-3 p-4 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl flex items-center space-x-3 border border-white/5 shadow-inner">
-                                                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-                                                        {toolName === 'generateQuiz' ? 'Generating your quiz...' : 'Architecting your career path...'}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                            <div className="rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-purple-700 dark:text-purple-200">
+                                {currentDomain?.title || 'No roadmap loaded'}
+                            </div>
+                            {currentSkill && (
+                                <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-200">
+                                    {currentSkill.title}
                                 </div>
-                            </motion.div>
-                        ))
-                    )}
-                </AnimatePresence>
-                {isTyping && messages[messages.length - 1]?.role !== 'assistant' && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex justify-start"
-                    >
-                        <div className="flex space-x-3">
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-md">
-                                <Bot className="w-4 h-4 text-white" />
-                            </div>
-                            <div className="px-5 py-3.5 rounded-2xl glass-premium dark:glass-premium-dark border border-white/30 dark:border-white/10 shadow-sm">
-                                <div className="flex space-x-1.5">
-                                    <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                    <div className="w-2 h-2 bg-purple-500 dark:bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                    <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                </div>
-                            </div>
+                            )}
                         </div>
-                    </motion.div>
-                )}
-                <div ref={messagesEndRef} />
-            </main>
-
-            <DashboardSection
-                profile={profile}
-                isOpen={isDashboardOpen}
-                onClose={() => setIsDashboardOpen(false)}
-            />
-
-            {/* Input Area */}
-            <footer className="p-4 glass-premium dark:glass-premium-dark border-t border-white/20 dark:border-white/10 backdrop-blur-xl">
-                <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex space-x-2">
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={handleInputChange}
-                        placeholder="Type your message..."
-                        className="flex-1 px-5 py-3.5 bg-white/50 dark:bg-neutral-900/50 border-2 border-transparent rounded-xl focus:border-blue-500/50 focus:bg-white dark:focus:bg-neutral-900 focus-glow smooth-transition outline-none font-medium placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
-                    />
-                    <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        type="submit"
-                        disabled={!input.trim() || isTyping}
-                        className="p-3.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed smooth-transition shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40"
-                    >
-                        <Send className="w-5 h-5" />
-                    </motion.button>
-                </form>
-            </footer>
-
-            {/* Error Display */}
-            {error && (
-                <div className="fixed bottom-20 left-4 right-4 max-w-md mx-auto p-4 bg-red-500/10 border border-red-500/30 rounded-2xl backdrop-blur-md">
-                    <div className="flex items-center space-x-3">
-                        <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs">!</span>
-                        </div>
-                        <div className="flex-1">
-                            <p className="text-red-400 text-sm font-medium">Chat Error</p>
-                            <p className="text-red-300 text-xs">{error.message || 'Failed to send message. Please try again.'}</p>
-                        </div>
-                        <button 
-                            onClick={() => window.location.reload()}
-                            className="text-red-400 hover:text-red-300 text-xs underline"
-                        >
-                            Reload
-                        </button>
+                        <p className="mt-3 max-w-3xl text-sm text-neutral-600 dark:text-neutral-300">
+                            This page mirrors the backend orchestration model directly: roadmap creation, onboarding, human-in-the-loop skill probes,
+                            task decomposition, lesson delivery, quizzes, and memory compaction.
+                        </p>
                     </div>
+
+                    <div className="max-h-[calc(100vh-280px)] space-y-5 overflow-y-auto p-6">
+                        {messages.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto min-h-[420px]">
+                                <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-2xl">
+                                    <Radar className="h-10 w-10 text-neutral-600 dark:text-neutral-300" />
+                                </div>
+                                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white">Start your journey</h2>
+                                <p className="text-neutral-600 dark:text-neutral-400">
+                                    Enter the role you want to pursue. The backend will generate a roadmap, start the knowledge-calibration flow,
+                                    and return the first onboarding questions.
+                                </p>
+                            </div>
+                        ) : (
+                            messages.map((message, index) => (
+                                <motion.div
+                                    key={message.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.22, delay: index * 0.02 }}
+                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div className={`flex max-w-[90%] gap-3 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        <div className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center shadow-md ${
+                                            message.role === 'user'
+                                                ? 'bg-gradient-to-br from-neutral-800 to-neutral-900 dark:from-neutral-100 dark:to-neutral-200 text-white dark:text-neutral-900'
+                                                : message.role === 'system'
+                                                    ? 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
+                                                    : 'bg-gradient-to-br from-blue-500 to-purple-500 text-white'
+                                        }`}>
+                                            {message.role === 'user' ? <UserIcon className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                                        </div>
+                                        <div className={`px-5 py-3.5 rounded-2xl shadow-sm ${
+                                            message.role === 'user'
+                                                ? 'bg-gradient-to-br from-neutral-900 to-neutral-800 dark:from-neutral-100 dark:to-neutral-50 text-white dark:text-neutral-900 shadow-md'
+                                                : 'glass-premium dark:glass-premium-dark text-neutral-900 dark:text-white border border-white/30 dark:border-white/10'
+                                        }`}>
+                                            <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>li]:mb-1">
+                                                <ReactMarkdown>{message.content}</ReactMarkdown>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))
+                        )}
+
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    <div className="p-4 glass-premium dark:glass-premium-dark border-t border-white/20 dark:border-white/10 backdrop-blur-xl">
+                        <form onSubmit={handleSubmit} className="flex gap-3">
+                            <input
+                                value={input}
+                                onChange={event => setInput(event.target.value)}
+                                placeholder={inputPlaceholder(session)}
+                                className="flex-1 px-5 py-3.5 bg-white/50 dark:bg-neutral-900/50 border-2 border-transparent rounded-xl focus:border-blue-500/50 focus:bg-white dark:focus:bg-neutral-900 focus-glow smooth-transition outline-none font-medium placeholder:text-neutral-500 dark:placeholder:text-neutral-400 text-neutral-900 dark:text-white"
+                            />
+                            <button
+                                type="submit"
+                                disabled={!input.trim() || busy}
+                                className="p-3.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed smooth-transition shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40"
+                            >
+                                <Send className="h-4 w-4" />
+                            </button>
+                        </form>
+
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-600 dark:text-neutral-400">
+                            <span>{busy ? 'Waiting for backend orchestration...' : 'Ready for the next turn.'}</span>
+                            <button onClick={resetChat} className="font-semibold text-neutral-700 dark:text-neutral-300 transition hover:text-neutral-900 dark:hover:text-white">
+                                Reset Session
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <aside className="space-y-6">
+                    <section className="rounded-[2rem] glass-premium dark:glass-premium-dark p-5 shadow-xl border border-white/30 dark:border-white/10">
+                        <div className="flex items-center gap-2">
+                            <Target className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-neutral-900 dark:text-white">Runtime State</h2>
+                        </div>
+
+                        <div className="mt-4 space-y-4 text-sm text-neutral-800 dark:text-neutral-200">
+                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
+                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Status</p>
+                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">{session?.status || 'idle'}</p>
+                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">{session?.active_agent || 'No active agent yet'}</p>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
+                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Current Domain</p>
+                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">{currentDomain?.title || 'Not started'}</p>
+                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">{currentDomain?.description || 'No domain selected yet.'}</p>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
+                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Current Skill</p>
+                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">{currentSkill?.title || 'Waiting for calibration'}</p>
+                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">{currentSkill?.description || 'The knowledge agent will lock onto the frontier skill.'}</p>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
+                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Current Topic</p>
+                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">
+                                    {String(currentTopic?.title || currentTopic?.objective || 'Lesson plan not generated yet')}
+                                </p>
+                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+                                    Topic index: {session?.state?.current_topic_index ?? 0} / {(session?.state?.lesson_plan || []).length || 0}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+                </aside>
+            </div>
+
+            <DashboardSection profile={profile} isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
+
+            {error ? (
+                <div className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-100 backdrop-blur-xl">
+                    <p className="font-semibold">Pipeline error</p>
+                    <p className="mt-1 text-red-700/80 dark:text-red-100/80">{error}</p>
                 </div>
-            )}
-
-            {activeQuiz && (
-                <QuizOverlay
-                    questions={activeQuiz}
-                    onComplete={async (score) => {
-                        const xpGain = score * 50
-                        if (profile) {
-                            const newXP = profile.xp + xpGain
-                            setProfile(prev => prev ? { ...prev, xp: newXP } : null)
-
-                            const supabase = createClient()
-                            await supabase.from('profiles').update({ xp: newXP }).eq('id', user?.id)
-                        }
-                        setActiveQuiz(null)
-
-                        const completionMessage: any = {
-                            id: Date.now().toString(),
-                            role: 'assistant',
-                            parts: [{ type: 'text' as const, text: `Great job on the quiz! You've earned **${xpGain} XP**. Your understanding of these concepts is getting stronger. What would you like to focus on next?` }]
-                        }
-                        setMessages([...messages, completionMessage])
-
-                        // Persistence: Save quiz result message
-                        if (user?.id) {
-                            const supabase = createClient()
-                            await supabase.from('messages').insert({
-                                user_id: user.id,
-                                content: completionMessage.parts[0].text,
-                                role: 'assistant'
-                            })
-                        }
-                    }}
-                    onClose={() => setActiveQuiz(null)}
-                />
-            )}
+            ) : null}
         </div>
     )
 }

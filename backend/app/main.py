@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.api import agent
 from app.api import health
 from app.api import users
 from app.api import roadmap
@@ -52,6 +53,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+app.include_router(agent.router)
 app.include_router(users.router)
 app.include_router(roadmap.router)
 

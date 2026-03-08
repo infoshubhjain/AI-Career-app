@@ -6,11 +6,12 @@ import { useAuth } from "@/contexts/auth-context";
 import { LogIn, LogOut, Rocket, Brain, Target, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { ThemeToggle } from "@/components/theme-toggle";
+import Link from "next/link";
 
 export default function Home() {
   const [futureGoal, setFutureGoal] = useState("");
   const router = useRouter();
-  const { user, signInWithGoogle, signOut, loading } = useAuth();
+  const { user, signOut, loading } = useAuth();
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -52,17 +53,18 @@ export default function Home() {
             </button>
           </motion.div>
         ) : (
-          <motion.button
+          <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => signInWithGoogle()}
             className="flex items-center space-x-2 px-5 py-2.5 sm:px-6 sm:py-3 text-sm font-semibold rounded-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-xl hover:shadow-2xl smooth-transition"
           >
-            <LogIn className="w-4 h-4" />
-            <span>Sign In</span>
-          </motion.button>
+            <Link href="/auth/login" className="flex items-center space-x-2">
+              <LogIn className="w-4 h-4" />
+              <span>Sign In</span>
+            </Link>
+          </motion.div>
         )}
       </div>
 

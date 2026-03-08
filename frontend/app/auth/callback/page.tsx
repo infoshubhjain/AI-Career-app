@@ -1,12 +1,5 @@
 "use client";
 
-/**
- * Auth Callback Page
- * 
- * Handles Supabase auth callbacks (email verification, password reset, etc.)
- * Redirects to the appropriate page after processing.
- */
-
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -27,29 +20,46 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // Get the auth code from URL if present
         const code = searchParams.get("code");
-        
-        if (code) {
-          // Exchange the code for a session
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          
+        const tokenHash = searchParams.get("token_hash");
+        const type = searchParams.get("type");
+
+        if (tokenHash && type) {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: type as "signup" | "invite" | "magiclink" | "recovery" | "email_change" | "email",
+          });
+
           if (error) {
+            setStatus("error");
+            setMessage(error.message);
+            return;
+          }
+        } else if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            if (error.message.includes("PKCE code verifier not found")) {
+              setStatus("success");
+              setMessage("Your email was verified. Return to the app and sign in if needed.");
+              setTimeout(() => {
+                router.push("/auth/login?verified=true");
+              }, 1500);
+              return;
+            }
+
             setStatus("error");
             setMessage(error.message);
             return;
           }
         }
 
-        // Sign out to force re-login after email verification
-        await supabase.auth.signOut();
-        
         setStatus("success");
         setMessage("Email verified successfully!");
-        
-        // Redirect to login page after a brief delay
+
+        const { data } = await supabase.auth.getSession();
         setTimeout(() => {
-          router.push("/auth/login?verified=true");
+          router.push(data.session ? "/" : "/auth/login?verified=true");
         }, 1500);
       } catch (err) {
         setStatus("error");
@@ -73,23 +83,13 @@ export default function AuthCallbackPage() {
         {status === "success" && (
           <>
             <div className="w-16 h-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-green-600 dark:text-green-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5 13l4 4L19 7"
-                />
+              <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <div className="space-y-2">
               <h1 className="text-2xl font-bold text-foreground">{message}</h1>
-              <p className="text-muted">Redirecting to login...</p>
+              <p className="text-muted">Redirecting...</p>
             </div>
           </>
         )}
@@ -97,18 +97,8 @@ export default function AuthCallbackPage() {
         {status === "error" && (
           <>
             <div className="w-16 h-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-red-600 dark:text-red-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
+              <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
             <div className="space-y-2">
@@ -127,4 +117,3 @@ export default function AuthCallbackPage() {
     </main>
   );
 }
-
