@@ -13,20 +13,25 @@ from app.core.config import settings
 from app.core.logging import AgentLogger
 
 
+def load_llm_config() -> dict[str, Any]:
+    config_path = Path(__file__).resolve().parents[2] / "config.yaml"
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    return raw.get("llm", {})
+
+
 class ProviderRouter:
     """Thin abstraction over OpenAI, Google, and OpenRouter chat APIs."""
 
-    def __init__(self) -> None:
-        config_path = Path(__file__).resolve().parents[2] / "config.yaml"
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        llm_cfg = raw.get("llm", {})
+    def __init__(self, *, model_override: str | None = None) -> None:
+        llm_cfg = load_llm_config()
 
         self.provider = str(llm_cfg.get("provider", "openai")).lower()
         self.temperature = float(llm_cfg.get("temperature", 0.2))
         self.timeout_seconds = int(llm_cfg.get("timeout_seconds", 180))
         self.models = llm_cfg.get("models", {})
 
-        self.model = str(self.models.get(self.provider, "")).strip()
+        configured_model = str(self.models.get(self.provider, "")).strip()
+        self.model = str(model_override or configured_model).strip()
         if not self.model:
             raise ValueError(f"No model configured for provider '{self.provider}' in backend/config.yaml")
 

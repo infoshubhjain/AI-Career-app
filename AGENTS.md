@@ -1,3 +1,5 @@
+Most files that exceed 300 lines of code should be refactored and shortened with proper directory structure.
+
 ## Skills
 A skill is a set of local instructions stored in a `SKILL.md` file.
 
@@ -24,13 +26,6 @@ If your installer uses a different location (for example `~/.agent/skills`), eit
 - If a skill path is missing, state it briefly and continue with best fallback.
 
 ## Available Skills
-
-### Core Workflow
-- `concise-planning`: Always start with a plan. (file: `$CODEX_HOME/skills/concise-planning/SKILL.md`)
-- `lint-and-validate`: Keep code clean automatically. (file: `$CODEX_HOME/skills/lint-and-validate/SKILL.md`)
-- `git-pushing`: Save work safely. (file: `$CODEX_HOME/skills/git-pushing/SKILL.md`)
-- `kaizen`: Continuous improvement mindset. (file: `$CODEX_HOME/skills/kaizen/SKILL.md`)
-- `systematic-debugging`: Debug like a pro. (file: `$CODEX_HOME/skills/systematic-debugging/SKILL.md`)
 
 ### The "Web Wizard" Pack
 - `frontend-design`: UI guidelines and aesthetics. (file: `$CODEX_HOME/skills/frontend-design/SKILL.md`)
@@ -66,9 +61,3 @@ If your installer uses a different location (for example `~/.agent/skills`), eit
 - `ai-agents-architect`: Autonomous agent system design. (file: `$CODEX_HOME/skills/ai-agents-architect/SKILL.md`)
 - `rag-engineer`: RAG systems with vector search. (file: `$CODEX_HOME/skills/rag-engineer/SKILL.md`)
 
-#### The "LLM Application Developer" Pack
-- `llm-app-patterns`: Production LLM patterns. (file: `$CODEX_HOME/skills/llm-app-patterns/SKILL.md`)
-- `rag-implementation`: Retrieval-augmented generation. (file: `$CODEX_HOME/skills/rag-implementation/SKILL.md`)
-- `prompt-caching`: LLM caching strategies. (file: `$CODEX_HOME/skills/prompt-caching/SKILL.md`)
-- `context-window-management`: Context optimization patterns. (file: `$CODEX_HOME/skills/context-window-management/SKILL.md`)
-- `langfuse`: LLM observability/tracing. (file: `$CODEX_HOME/skills/langfuse/SKILL.md`)

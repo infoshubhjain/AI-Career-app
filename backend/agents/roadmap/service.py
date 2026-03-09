@@ -195,6 +195,7 @@ class RoadmapAgent:
         if retrieval.get("status") == "exists":
             stored = retrieval.get("roadmap") or {}
             response = self._to_response(stored, fallback_query=query)
+            response.normalized_title = normalized_title or (retrieval.get("normalized_title") if retrieval else None)
             response.existing = True
             return response
 
@@ -265,6 +266,7 @@ class RoadmapAgent:
             domain["subdomains"] = normalized_subdomains
 
         response = self._to_response(final_data, fallback_query=query)
+        response.normalized_title = normalized_title or None
         response.existing = False
 
         try:

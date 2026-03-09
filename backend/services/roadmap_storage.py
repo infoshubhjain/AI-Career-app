@@ -52,6 +52,24 @@ class RoadmapStorage:
 
         await asyncio.to_thread(_rpc_call)
 
+    async def delete_roadmap(self, career_title: str) -> int:
+        client = get_supabase_admin_client()
+
+        def _delete() -> int:
+            result = client.table("roadmap_library").delete().eq("career_title", career_title).execute()
+            return len(result.data or [])
+
+        return await asyncio.to_thread(_delete)
+
+    async def clear_roadmaps(self) -> int:
+        client = get_supabase_admin_client()
+
+        def _delete() -> int:
+            result = client.table("roadmap_library").delete().neq("id", 0).execute()
+            return len(result.data or [])
+
+        return await asyncio.to_thread(_delete)
+
     @staticmethod
     def _coerce_roadmap_json(value: Any) -> dict[str, Any]:
         if isinstance(value, dict):

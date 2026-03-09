@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from agents.runtime.providers import ProviderRouter
+from agents.runtime.providers import ProviderRouter, load_llm_config
 from app.core.logging import RoadmapLogger
 
 
 class LLMClient:
     def __init__(self) -> None:
-        self.router = ProviderRouter()
+        llm_cfg = load_llm_config()
+        roadmap_model = str(llm_cfg.get("roadmap_model", "")).strip() or None
+
+        self.router = ProviderRouter(model_override=roadmap_model)
         self.provider = self.router.provider
         self.model = self.router.model
 

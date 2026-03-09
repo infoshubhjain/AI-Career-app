@@ -38,7 +38,21 @@ export interface AgentQuestion {
     id: string
     prompt: string
     skill_id?: string | null
-    kind: 'profile' | 'knowledge_probe' | 'topic_quiz' | 'skill_quiz' | 'domain_quiz'
+    domain_id?: string | null
+    concept_id?: string | null
+    correct_option_index?: number | null
+    question_type: 'multiple_choice'
+    kind: 'profile' | 'knowledge_probe' | 'placement_probe' | 'placement_confirm' | 'topic_quiz' | 'skill_quiz' | 'domain_quiz'
+    options: AgentAnswerOption[]
+    attempt_number: number
+    difficulty?: 'easy' | 'medium' | 'hard' | null
+    placement_stage?: 'placement_probe' | 'placement_confirm' | null
+    quiz_id?: string | null
+}
+
+export interface AgentAnswerOption {
+    id: string
+    label: string
 }
 
 export interface AgentRoadmapSkill {
@@ -59,16 +73,36 @@ export interface AgentRoadmapDomain {
 export interface AgentRoadmap {
     query: string
     domains: AgentRoadmapDomain[]
+    normalized_title?: string | null
     timestamp?: string | null
     filename?: string | null
     existing?: boolean | null
 }
 
 export interface AgentSessionState {
-    profile_answers?: string[]
+    profile_answers?: Array<Record<string, unknown>>
+    learner_profile?: {
+        reading_level?: string | null
+    }
     knowledge_state?: {
         skills?: Record<string, unknown>
         learning_frontier?: Record<string, unknown> | null
+        current_probe?: Record<string, unknown> | null
+        skill_probabilities_summary?: Array<Record<string, unknown>>
+        selection_reason?: string | null
+    }
+    placement_state?: {
+        phase?: string
+        question_budget_used?: number
+        max_questions?: number
+        recent_question_fingerprints?: string[]
+        global_history?: Array<Record<string, unknown>>
+        last_selected_skill_id?: string | null
+        last_selected_score?: number | null
+        frontier_index?: number | null
+        selection_policy?: string | null
+        skill_probability_summary?: Array<Record<string, unknown>>
+        stop_reason?: string | null
     }
     conversation_state?: Record<string, unknown>
     roadmap_progress?: {
@@ -80,11 +114,14 @@ export interface AgentSessionState {
     memory_summary?: string
     completed_domains?: string[]
     pending_domain_review?: Record<string, unknown> | null
+    active_quiz_id?: string | null
+    active_quiz_kind?: string | null
     [key: string]: unknown
 }
 
 export interface AgentSessionResponse {
     session_id: string
+    project_id?: string | null
     user_id: string
     status: string
     active_agent: string
@@ -96,9 +133,43 @@ export interface AgentSessionResponse {
 
 export interface AgentSessionStateResponse {
     session_id: string
+    project_id?: string | null
     user_id: string
     status: string
     active_agent: string
     roadmap?: AgentRoadmap | null
+    pending_questions: AgentQuestion[]
     state: AgentSessionState
+}
+
+export interface AgentProjectSummary {
+    id: string
+    user_id: string
+    title: string
+    goal: string
+    status: string
+    latest_session_id?: string | null
+    latest_session_status?: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface AgentProjectLatestSessionResponse {
+    project: AgentProjectSummary
+    session: AgentSessionStateResponse | null
+}
+
+export interface AgentEvent {
+    id: number
+    session_id: string
+    role: 'user' | 'assistant' | 'system'
+    agent: string
+    event_type: string
+    content?: string | null
+    payload: Record<string, unknown>
+    created_at: string
+}
+
+export interface AgentDeleteResponse {
+    deleted: boolean
 }

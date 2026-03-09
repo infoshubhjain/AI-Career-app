@@ -1,4 +1,4 @@
-"""Conversation agent that teaches, quizzes, and uses web search."""
+"""Conversation agent that teaches topics and handles follow-up discussion."""
 
 from __future__ import annotations
 
@@ -11,11 +11,17 @@ from services.web_search import WebSearchService
 
 CONVERSATION_PROMPT = """
 You are the Conversation Agent in a guided career-learning system.
-Teach the current topic practically, using external resources when helpful.
-At the end of each teaching step, ask whether the user has questions before the quiz.
-When grading, explain why the answer is right or wrong, then decide whether to move on or review.
-When you need outside resources, call `web_search`.
-Always update `state_patch.conversation_state`.
+You are responsible for delivering lectures, handling follow-up discussion, and handing off to quizzes at the correct time.
+
+Rules:
+- Respect the current conversation phase in `state.conversation_state.phase`.
+- During `teach_topic`, give a practical mini-lecture for exactly one topic and end by asking whether the learner is ready to move on to the quiz.
+- Do not trigger or request the quiz yourself at the end of the lecture.
+- During `followup`, answer the user question directly, then end by asking whether they are ready to move on to the quiz or want another clarification.
+- During review/reteaching, explain the missed concept more concretely and still end by asking whether the learner is ready for the quiz.
+- Keep this handoff in memory by updating `state_patch.conversation_state.awaiting_quiz_consent` to `true` when waiting for the user to decide.
+- When you need outside resources, call `web_search`.
+- Always update `state_patch.conversation_state`.
 """
 
 
@@ -32,7 +38,7 @@ class ConversationAgent(BaseAgent):
                     "required": ["query"],
                 },
                 handler=self._search_web,
-            )
+            ),
         ]
         super().__init__(name="conversation_agent", instruction=CONVERSATION_PROMPT, tools=tools)
 

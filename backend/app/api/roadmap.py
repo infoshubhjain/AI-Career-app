@@ -8,11 +8,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from slugify import slugify
 
-from app.models.roadmap import RoadmapGenerateRequest, RoadmapGenerateResponse, RoadmapListResponse, RoadmapResponse
+from app.models.roadmap import (
+    RoadmapCacheDeleteResponse,
+    RoadmapGenerateRequest,
+    RoadmapGenerateResponse,
+    RoadmapListResponse,
+    RoadmapResponse,
+)
 from agents.roadmap import RoadmapAgent
+from services.career_normalizer import CareerNormalizer
+from services.roadmap_storage import RoadmapStorage
 
 
 router = APIRouter(prefix="/api/roadmap", tags=["Roadmap"])
@@ -21,6 +29,8 @@ ROADMAPS_DIR.mkdir(exist_ok=True)
 
 
 agent = RoadmapAgent()
+normalizer = CareerNormalizer()
+storage = RoadmapStorage()
 
 
 def _generate_filename(query: str, suffix: str) -> str:
@@ -109,3 +119,28 @@ async def list_roadmaps() -> RoadmapListResponse:
         return RoadmapListResponse(roadmaps=roadmaps)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to list roadmaps: {str(exc)}") from exc
+
+
+@router.delete("/cache", response_model=RoadmapCacheDeleteResponse)
+async def delete_cached_roadmaps(
+    query: str | None = Query(default=None),
+    career_title: str | None = Query(default=None),
+    delete_all: bool = Query(default=False),
+) -> RoadmapCacheDeleteResponse:
+    try:
+        if delete_all:
+            deleted_count = await storage.clear_roadmaps()
+            return RoadmapCacheDeleteResponse(deleted_count=deleted_count, career_title=None)
+
+        normalized_title = (career_title or "").strip()
+        if not normalized_title:
+            if not (query or "").strip():
+                raise HTTPException(status_code=422, detail="Provide either `query`, `career_title`, or `delete_all=true`.")
+            normalized_title = await normalizer.normalize_career(query.strip())
+
+        deleted_count = await storage.delete_roadmap(normalized_title)
+        return RoadmapCacheDeleteResponse(deleted_count=deleted_count, career_title=normalized_title)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to delete cached roadmaps: {str(exc)}") from exc
