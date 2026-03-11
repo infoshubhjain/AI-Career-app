@@ -17,11 +17,11 @@ from app.models.agent import (
 
 
 class RuntimeApiMixin:
-    async def create_session(self, *, user_id: str, query: str) -> AgentSessionResponse:
+    async def create_session(self, *, user_id: str, query: str, learning_style: str | None = None) -> AgentSessionResponse:
         roadmap = await self.roadmap_agent.generate(query=query)
         project_id = str(uuid.uuid4())
         session_id = str(uuid.uuid4())
-        state = self._initial_state(roadmap=roadmap)
+        state = self._initial_state(roadmap=roadmap, learning_style=learning_style)
         profile = await self.store.get_profile(user_id)
         reading_level = str((profile or {}).get("reading_level") or "").strip() or None
         if reading_level:

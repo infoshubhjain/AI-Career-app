@@ -24,7 +24,7 @@ orchestrator = LearningOrchestrator()
 @router.post("/sessions", response_model=AgentSessionResponse)
 async def create_agent_session(request: AgentSessionCreateRequest) -> AgentSessionResponse:
     try:
-        return await orchestrator.create_session(user_id=request.user_id, query=request.query)
+        return await orchestrator.create_session(user_id=request.user_id, query=request.query, learning_style=request.learning_style)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -22,6 +22,12 @@ Rules:
 - Keep this handoff in memory by updating `state_patch.conversation_state.awaiting_quiz_consent` to `true` when waiting for the user to decide.
 - When you need outside resources, call `web_search`.
 - Always update `state_patch.conversation_state`.
+
+LEARNING STYLE ADAPTATION:
+Check `state.learning_style` and adapt every response accordingly:
+- "text": Use rich written explanations with code snippets, bullet-point summaries, analogies, and markdown formatting. Do NOT suggest video resources.
+- "video": Keep written content brief and scannable. Always include 1-2 curated YouTube or video resource recommendations (use web_search to find them). Use visual metaphors.
+- "both": Provide a solid written explanation AND suggest 1 relevant video resource via web_search. Balance depth of text with multimedia pointers.
 """
 
 

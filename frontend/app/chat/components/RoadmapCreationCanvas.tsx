@@ -98,7 +98,7 @@ export function RoadmapCreationCanvas({ visible, ambition }: RoadmapCreationCanv
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 z-20 overflow-hidden rounded-[2rem]"
+                    className="fixed inset-0 z-50 overflow-hidden"
                 >
                     <canvas ref={canvasRef} className="h-full w-full" />
                     <div className="absolute inset-0 bg-neutral-950/45 backdrop-blur-[2px]" />

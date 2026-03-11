@@ -10,10 +10,11 @@ export type AgentTurnPayload = {
   selected_option_index?: number
 }
 
-export async function createAgentSession(userId: string, query: string) {
+export async function createAgentSession(userId: string, query: string, learningStyle?: string | null) {
   return api.post<AgentSessionResponse>('/api/agent/sessions', {
     user_id: userId,
     query,
+    ...(learningStyle ? { learning_style: learningStyle } : {}),
   })
 }
 

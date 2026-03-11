@@ -33,6 +33,7 @@ class AgentQuestion(BaseModel):
 class AgentSessionCreateRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     query: str = Field(..., min_length=1)
+    learning_style: Literal["text", "video", "both"] | None = None
 
 
 class AgentTurnRequest(BaseModel):

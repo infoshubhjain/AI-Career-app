@@ -17,8 +17,9 @@ READING_LEVEL_OPTIONS = [
 
 
 class CoreStateMixin:
-    def _initial_state(self, *, roadmap: RoadmapResponse) -> dict[str, Any]:
+    def _initial_state(self, *, roadmap: RoadmapResponse, learning_style: str | None = None) -> dict[str, Any]:
         return {
+            "learning_style": learning_style or "text",
             "learning_path_mode": None,
             "profile_answers": [],
             "learner_profile": {"reading_level": None},
