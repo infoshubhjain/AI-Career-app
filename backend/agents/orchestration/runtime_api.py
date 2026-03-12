@@ -251,9 +251,16 @@ class RuntimeApiMixin:
         state: dict[str, Any],
         intro: str,
     ) -> AgentSessionResponse:
-        self._initialize_placement(state, session["roadmap_json"])
+        self._initialize_binary_placement(state, session["roadmap_json"])
         await self._refresh_project_knowledge_state(session=session, state=state)
-        quiz_bundle = await self._next_placement_probe(session=session, state=state, user_message="Start the initial roadmap placement.")
+        target_skill = self._placement_current_skill(state, session["roadmap_json"])
+        quiz_bundle = await self._create_placement_quiz(
+            session=session,
+            state=state,
+            target_skill=target_skill,
+            prior_question=None,
+            attempt_number=1,
+        )
         updated = await self.store.update_session(
             session["id"],
             {"status": "awaiting_knowledge_answer", "active_agent": "quiz_agent", "state": quiz_bundle["state"]},

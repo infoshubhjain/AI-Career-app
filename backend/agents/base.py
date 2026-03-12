@@ -134,6 +134,7 @@ class BaseAgent:
         system_prompt = (
             f"{self.instruction}\n\n"
             f"Respond based on the user's reading level is {reading_level}.\n\n"
+            "All user-facing content must be valid Markdown. Use headings, lists, tables, blockquotes, and fenced code blocks when helpful.\n\n"
             "You are operating in a strict ReAct runtime.\n"
             "Available tools:\n"
             f"{tool_block}\n\n"

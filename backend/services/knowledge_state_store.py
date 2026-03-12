@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from app.core.logging import AgentLogger
@@ -173,6 +174,9 @@ class KnowledgeStateStore:
         is_correct: bool,
         selection_reason: str = "",
         selection_score: float | None = None,
+        override_p_learn: float | None = None,
+        override_p_guess: float | None = None,
+        override_p_slip: float | None = None,
     ) -> dict[str, Any]:
         skill_id = str(quiz.get("skill_id") or "")
         if not skill_id:
@@ -184,7 +188,15 @@ class KnowledgeStateStore:
         project_row = project_rows[0]
         global_row = global_rows[0] if global_rows else None
         project_state = self._state_from_row(project_row)
-        update = self.bkt.update(project_state, is_correct=is_correct)
+        update_state = project_state
+        if override_p_learn is not None or override_p_guess is not None or override_p_slip is not None:
+            update_state = replace(
+                project_state,
+                p_learn=project_state.p_learn if override_p_learn is None else float(override_p_learn),
+                p_guess=project_state.p_guess if override_p_guess is None else float(override_p_guess),
+                p_slip=project_state.p_slip if override_p_slip is None else float(override_p_slip),
+            )
+        update = self.bkt.update(update_state, is_correct=is_correct)
         updated_project = await self.session_store.upsert_project_skill_knowledge(
             {
                 "project_id": project_id,

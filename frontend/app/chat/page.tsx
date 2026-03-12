@@ -658,13 +658,13 @@ export default function ChatPage() {
     }
 
     return (
-        <div className="relative min-h-screen bg-[color:var(--base)] text-[color:var(--ink)]" style={themeVars}>
+        <div className="relative h-screen w-full overflow-hidden bg-[color:var(--base)] text-[color:var(--ink)]" style={themeVars}>
             <style jsx global>{`
                 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@300;400;500;600&display=swap');
             `}</style>
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,_rgba(215,182,106,0.18)_0%,_rgba(11,12,15,0.0)_55%),radial-gradient(70%_60%_at_90%_10%,_rgba(127,209,194,0.12)_0%,_rgba(11,12,15,0.0)_60%),radial-gradient(90%_70%_at_10%_90%,_rgba(143,180,255,0.1)_0%,_rgba(11,12,15,0.0)_55%)]" />
 
-            <div className="relative z-10 flex min-h-screen">
+            <div className="relative z-10 flex h-screen w-full overflow-hidden">
                 <div className={`fixed inset-y-0 left-0 z-30 transition-[width] duration-300 ${isProjectsCollapsed ? 'w-7' : 'w-80'} lg:static lg:z-auto`}>
                     <ProjectSidebar
                         projects={projects}
@@ -679,7 +679,7 @@ export default function ChatPage() {
                     />
                 </div>
 
-                <main className="flex flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+                <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
                     <header className="flex flex-wrap items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <Link

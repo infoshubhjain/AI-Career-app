@@ -32,6 +32,34 @@ Rules:
 - For retry questions, target the missed concept without repeating the previous wording.
 - Avoid repeating any concept or wording seen in recent placement history.
 - Avoid multi-part questions.
+- Use Markdown in the prompt/explanation/messages when it helps clarity (code, lists, emphasis).
+- Keep options short; inline code is ok.
+""".strip()
+
+PLACEMENT_PROMPT = """
+You are the Quiz Agent running a placement test.
+Generate exactly one multiple-choice question with exactly 4 answer options.
+
+Return JSON with this exact shape:
+{
+  "message": "short assistant intro for the quiz",
+  "prompt": "the question text",
+  "options": ["option one", "option two", "option three", "option four"],
+  "correct_option_index": 0,
+  "explanation": "brief explanation of why the correct option is right",
+  "focus": "what concept this question measures",
+  "concept_id": "short concept slug",
+  "difficulty": "easy | medium | hard"
+}
+
+Rules:
+- Exactly 4 answer options.
+- Exactly 1 correct answer.
+- Keep the question short and focused.
+- Use only the target skill and the prior question context if provided.
+- Avoid repeating the prior question wording.
+- Use Markdown in the prompt/explanation/messages when it helps clarity (code, lists, emphasis).
+- Keep options short; inline code is ok.
 """.strip()
 
 
@@ -52,27 +80,44 @@ class QuizAgent(BaseAgent):
         placement_state = context.state.get("placement_state") or {}
         reading_level = self._reading_level(context.state)
 
-        messages = [
-            {"role": "system", "content": QUIZ_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    "Generate the next quiz question.\n\n"
-                    f"Quiz scope: {scope}\n\n"
-                    f"Reading level: {reading_level}\n\n"
-                    f"Target skill: {target_skill}\n\n"
-                    f"Target topic: {target_topic}\n\n"
-                    f"Target domain: {target_domain}\n\n"
-                    f"Prior quiz: {prior_quiz}\n\n"
-                    f"Placement plan: {placement_plan}\n\n"
-                    f"Placement summary: {placement_state}\n\n"
-                    f"Placement history: {placement_history}\n\n"
-                    f"Recent question fingerprints: {recent_question_fingerprints}\n\n"
-                    f"Retry reason: {retry_reason}\n\n"
-                    f"Latest orchestration message: {context.user_message}"
-                ),
-            },
-        ]
+        placement_mode = str(context.state.get("placement_mode") or "").strip()
+        prior_question = context.state.get("prior_question") or {}
+        if placement_mode == "binary_search" or scope == "placement_probe":
+            messages = [
+                {"role": "system", "content": PLACEMENT_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        "Generate the next placement question.\n\n"
+                        f"Reading level: {reading_level}\n\n"
+                        f"Target skill: {target_skill}\n\n"
+                        f"Prior question: {prior_question}\n\n"
+                        f"Latest orchestration message: {context.user_message}"
+                    ),
+                },
+            ]
+        else:
+            messages = [
+                {"role": "system", "content": QUIZ_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        "Generate the next quiz question.\n\n"
+                        f"Quiz scope: {scope}\n\n"
+                        f"Reading level: {reading_level}\n\n"
+                        f"Target skill: {target_skill}\n\n"
+                        f"Target topic: {target_topic}\n\n"
+                        f"Target domain: {target_domain}\n\n"
+                        f"Prior quiz: {prior_quiz}\n\n"
+                        f"Placement plan: {placement_plan}\n\n"
+                        f"Placement summary: {placement_state}\n\n"
+                        f"Placement history: {placement_history}\n\n"
+                        f"Recent question fingerprints: {recent_question_fingerprints}\n\n"
+                        f"Retry reason: {retry_reason}\n\n"
+                        f"Latest orchestration message: {context.user_message}"
+                    ),
+                },
+            ]
         response = await self.llm.complete_json(messages, max_tokens=1200, agent_name=self.name)
 
         prompt = str(response.get("prompt") or "").strip() or self._fallback_prompt(scope, target_skill, target_topic, target_domain)

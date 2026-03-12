@@ -75,29 +75,10 @@ export function ChatSurface({
     onBeginNewProject,
 }: ChatSurfaceProps) {
     return (
-        <section className="relative mt-6 flex flex-1 flex-col overflow-hidden rounded-[2.25rem] border border-[color:var(--line)] bg-[color:var(--surface)] shadow-[0_40px_120px_-80px_rgba(0,0,0,0.9)]">
+        <section className="relative mt-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[2.25rem] border border-[color:var(--line)] bg-[color:var(--surface)] shadow-[0_40px_120px_-80px_rgba(0,0,0,0.9)]">
             <RoadmapCreationCanvas visible={isRoadmapLoading} ambition={roadmapCreationQuery} />
 
-            <div className="border-b border-[color:var(--line)] px-6 py-5">
-                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em]">
-                    <span className="rounded-full border border-[color:var(--line)] bg-[color:var(--surface-2)] px-3 py-1 text-[color:var(--ink-faint)]">
-                        {session?.active_agent || 'orchestrator'}
-                    </span>
-                    <span className="rounded-full border border-[color:var(--line)] bg-[color:var(--surface-2)] px-3 py-1 text-[color:var(--ink-faint)]">
-                        {currentDomain?.title || (selectedProjectId ? 'Project loaded' : 'No project selected')}
-                    </span>
-                    {currentSkill ? (
-                        <span className="rounded-full border border-[color:var(--line)] bg-[color:var(--surface-2)] px-3 py-1 text-[color:var(--ink-faint)]">
-                            {currentSkill.title}
-                        </span>
-                    ) : null}
-                </div>
-                <p className="mt-3 text-sm text-[color:var(--ink-soft)]">
-                    {isEntryMode
-                        ? 'Describe your ambition to generate a roadmap, trace your current knowledge, and unlock the guided lecture flow.'
-                        : 'Your workspace stores roadmaps, quizzes, adaptive knowledge state, and full transcript history.'}
-                </p>
-            </div>
+
 
             <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
                 {isLearningMode ? (
