@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
-import ReactMarkdown from 'react-markdown'
-import { ArrowLeft, Bot, ChevronRight, LayoutDashboard, Radar, Send, Target, User as UserIcon } from 'lucide-react'
+import { ArrowLeft, LayoutDashboard } from 'lucide-react'
 
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
@@ -19,12 +17,12 @@ import {
     type AgentTurnPayload,
 } from '@/app/lib/agent-api'
 import { DashboardSection } from './components/DashboardSection'
-import { JourneyStatusCard } from './components/JourneyStatusCard'
+import { ChatSurface } from './components/ChatSurface'
 import { ProgressionHeader } from './components/ProgressionHeader'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { QuizOverlay } from './components/QuizOverlay'
-import { RoadmapCreationCanvas } from './components/RoadmapCreationCanvas'
 import { RoadmapRevealOverlay } from './components/RoadmapRevealOverlay'
+import { RuntimePanel } from './components/RuntimePanel'
 import { TaskRevealOverlay } from './components/TaskRevealOverlay'
 import {
     AgentEvent,
@@ -102,12 +100,12 @@ function shouldAppendAssistantTimelineMessage(response: AgentSessionResponse) {
 }
 
 function statusTone(status: string) {
-    if (status.includes('quiz')) return 'bg-amber-500/15 text-amber-700 dark:text-amber-200 border-amber-400/30'
-    if (status.includes('knowledge')) return 'bg-blue-500/15 text-blue-700 dark:text-blue-200 border-blue-400/30'
-    if (status.includes('teach')) return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200 border-emerald-400/30'
-    if (status.includes('profile')) return 'bg-sky-500/15 text-sky-700 dark:text-sky-200 border-sky-400/30'
-    if (status === 'completed') return 'bg-purple-500/15 text-purple-700 dark:text-purple-200 border-purple-400/30'
-    return 'bg-white/50 dark:bg-neutral-800/50 text-neutral-700 dark:text-neutral-200 border-white/20 dark:border-white/10'
+    if (status.includes('quiz')) return 'border-[color:var(--accent)] bg-[color:var(--surface-2)] text-[color:var(--accent)]'
+    if (status.includes('knowledge')) return 'border-[color:var(--accent-2)] bg-[color:var(--surface-2)] text-[color:var(--accent-2)]'
+    if (status.includes('teach')) return 'border-[color:var(--accent-3)] bg-[color:var(--surface-2)] text-[color:var(--accent-3)]'
+    if (status.includes('profile')) return 'border-[color:var(--accent)] bg-[color:var(--surface-2)] text-[color:var(--ink)]'
+    if (status === 'completed') return 'border-[color:var(--accent)] bg-[color:var(--surface-2)] text-[color:var(--accent)]'
+    return 'border-[color:var(--line)] bg-[color:var(--surface-2)] text-[color:var(--ink-faint)]'
 }
 
 function inputPlaceholder(session: AgentSessionResponse | null, hasPendingQuiz: boolean) {
@@ -188,6 +186,9 @@ export default function ChatPage() {
     const [isRoadmapLoading, setIsRoadmapLoading] = useState(false)
     const [roadmapRevealLabel, setRoadmapRevealLabel] = useState<string | null>(null)
     const [taskReveal, setTaskReveal] = useState<{ topicTitle: string; skillTitle: string; domainTitle?: string | null } | null>(null)
+    const [isProjectsCollapsed, setIsProjectsCollapsed] = useState(false)
+    const [isRuntimeCollapsed, setIsRuntimeCollapsed] = useState(false)
+    const streamingTimerRef = useRef<number | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const initializationStartedRef = useRef(false)
     const sessionCreationInFlightRef = useRef(false)
@@ -228,6 +229,14 @@ export default function ChatPage() {
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
+
+    useEffect(() => {
+        return () => {
+            if (streamingTimerRef.current) {
+                window.clearInterval(streamingTimerRef.current)
+            }
+        }
+    }, [])
 
     useEffect(() => {
         if (!pendingQuizKey) {
@@ -466,7 +475,7 @@ export default function ChatPage() {
         setSession(syncedSession ? hydrateSession(syncedSession) : data)
         setSelectedProjectId(data.project_id || selectedProjectId)
         if (shouldAppendAssistantTimelineMessage(data)) {
-            setMessages(prev => [...prev, buildAssistantMessage(data)])
+            streamAssistantMessage(data.message)
         }
         await refreshProjects(data.project_id || selectedProjectId || undefined)
         setBusy(false)
@@ -478,6 +487,45 @@ export default function ChatPage() {
             if (supabase) await supabase.from('profiles').update({ xp: newXP }).eq('id', user.id)
         }
         return data
+    }
+
+    function streamAssistantMessage(content: string) {
+        if (streamingTimerRef.current) {
+            window.clearInterval(streamingTimerRef.current)
+        }
+        const messageId = `assistant-${Date.now()}`
+        const createdAt = new Date().toISOString()
+        setMessages(prev => [
+            ...prev,
+            {
+                id: messageId,
+                role: 'assistant',
+                content: '',
+                createdAt,
+            },
+        ])
+
+        let index = 0
+        const reveal = () => {
+            index = Math.min(index + 6, content.length)
+            setMessages(prev =>
+                prev.map(message =>
+                    message.id === messageId
+                        ? {
+                              ...message,
+                              content: content.slice(0, index),
+                          }
+                        : message
+                )
+            )
+            if (index >= content.length) {
+                if (streamingTimerRef.current) {
+                    window.clearInterval(streamingTimerRef.current)
+                }
+            }
+        }
+
+        streamingTimerRef.current = window.setInterval(reveal, 18)
     }
 
     async function handleSubmit(e: React.FormEvent) {
@@ -510,6 +558,10 @@ export default function ChatPage() {
 
     async function handleQuizSelect(optionId: string, optionIndex: number, optionLabel: string) {
         if (!session || !user?.id || !pendingQuestion || busy) return
+
+        if (pendingQuizKey) {
+            setDismissedQuizKey(pendingQuizKey)
+        }
 
         await continueSession({
             user_id: user.id,
@@ -558,23 +610,46 @@ export default function ChatPage() {
         shouldRevealNextTaskRef.current = false
     }
 
+    const themeVars: CSSProperties & Record<string, string> = {
+        '--base': '#0b0c0f',
+        '--surface': 'rgba(18,20,26,0.92)',
+        '--surface-2': 'rgba(24,28,36,0.76)',
+        '--line': 'rgba(255,255,255,0.08)',
+        '--line-strong': 'rgba(255,255,255,0.16)',
+        '--ink': '#f4f1e9',
+        '--ink-soft': '#c9c4b8',
+        '--ink-faint': '#8e8a7c',
+        '--accent': '#d7b66a',
+        '--accent-2': '#7fd1c2',
+        '--accent-3': '#8fb4ff',
+        fontFamily: "'Sora', sans-serif",
+    }
+
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-neutral-900 dark:border-white"></div>
+            <div className="min-h-screen flex items-center justify-center" style={themeVars}>
+                <div className="h-12 w-12 animate-spin rounded-full border-2 border-[color:var(--line)] border-t-[color:var(--accent)]" />
             </div>
         )
     }
 
     if (!user) {
         return (
-            <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-neutral-50 via-blue-50/20 to-purple-50/10 dark:from-neutral-950 dark:via-blue-950/10 dark:to-purple-950/5">
-                <div className="max-w-md rounded-[2rem] glass-premium dark:glass-premium-dark border border-white/20 dark:border-white/10 p-8 text-center">
-                    <h1 className="text-2xl font-semibold text-neutral-900 dark:text-white">Sign in to start your learning session</h1>
-                    <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">
+            <div className="min-h-screen flex items-center justify-center p-6 bg-[color:var(--base)] text-[color:var(--ink)]" style={themeVars}>
+                <style jsx global>{`
+                    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@300;400;500;600&display=swap');
+                `}</style>
+                <div className="max-w-md rounded-[2rem] border border-[color:var(--line)] bg-[color:var(--surface)] p-8 text-center shadow-[0_40px_120px_-70px_rgba(0,0,0,0.9)]">
+                    <h1 className="text-2xl font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                        Sign in to start your learning session
+                    </h1>
+                    <p className="mt-3 text-sm text-[color:var(--ink-soft)]">
                         Your projects, quizzes, and conversation history are now stored server-side per account.
                     </p>
-                    <Link href="/auth/login" className="mt-6 inline-flex items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg">
+                    <Link
+                        href="/auth/login"
+                        className="mt-6 inline-flex items-center justify-center rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent-2))] px-5 py-3 text-sm font-semibold text-[#1c160a] shadow-[0_18px_60px_-30px_rgba(0,0,0,0.8)]"
+                    >
                         Go to Login
                     </Link>
                 </div>
@@ -583,208 +658,101 @@ export default function ChatPage() {
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/20 to-purple-50/10 dark:from-neutral-950 dark:via-blue-950/10 dark:to-purple-950/5">
-            <header className="flex items-center justify-between px-4 sm:px-6 py-4 glass-premium dark:glass-premium-dark border-b border-white/20 dark:border-white/10 sticky top-0 z-30 backdrop-blur-xl">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 w-full">
-                    <div className="flex items-center gap-3">
-                        <Link href="/" className="p-2 hover:bg-white/50 dark:hover:bg-neutral-800/50 rounded-full smooth-transition">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Link>
-                        <div>
-                            <h1 className="font-bold text-base sm:text-lg hidden sm:block bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">Career Tutor</h1>
-                            <p className="text-[10px] text-neutral-600 dark:text-neutral-400 uppercase tracking-wider font-semibold">Projects Workspace</p>
-                        </div>
-                    </div>
+        <div className="relative min-h-screen bg-[color:var(--base)] text-[color:var(--ink)]" style={themeVars}>
+            <style jsx global>{`
+                @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@300;400;500;600&display=swap');
+            `}</style>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,_rgba(215,182,106,0.18)_0%,_rgba(11,12,15,0.0)_55%),radial-gradient(70%_60%_at_90%_10%,_rgba(127,209,194,0.12)_0%,_rgba(11,12,15,0.0)_60%),radial-gradient(90%_70%_at_10%_90%,_rgba(143,180,255,0.1)_0%,_rgba(11,12,15,0.0)_55%)]" />
 
-                    <div className="flex items-center gap-4">
-                        <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
-                        <div className={`hidden rounded-full border px-3 py-1 text-xs font-semibold sm:block ${statusTone(session?.status || 'idle')}`}>
-                            {busy ? 'Processing' : session?.status || 'idle'}
-                        </div>
-                        <button onClick={() => setIsDashboardOpen(true)} className="p-2.5 bg-white/50 dark:bg-neutral-800/50 rounded-full hover:bg-white dark:hover:bg-neutral-800 smooth-transition shadow-sm hover:shadow-md">
-                            <LayoutDashboard className="h-5 w-5" />
-                        </button>
-                    </div>
+            <div className="relative z-10 flex min-h-screen">
+                <div className={`fixed inset-y-0 left-0 z-30 transition-[width] duration-300 ${isProjectsCollapsed ? 'w-7' : 'w-80'} lg:static lg:z-auto`}>
+                    <ProjectSidebar
+                        projects={projects}
+                        selectedProjectId={selectedProjectId}
+                        busy={busy}
+                        onSelect={projectId => void loadProject(projectId)}
+                        onDelete={projectId => void handleDeleteProject(projectId)}
+                        onStartNew={beginNewProject}
+                        collapsed={isProjectsCollapsed}
+                        onToggleCollapse={() => setIsProjectsCollapsed(prev => !prev)}
+                        className="h-full"
+                    />
                 </div>
-            </header>
 
-            <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)_340px] w-full">
-                <ProjectSidebar
-                    projects={projects}
-                    selectedProjectId={selectedProjectId}
-                    busy={busy}
-                    onSelect={projectId => void loadProject(projectId)}
-                    onDelete={projectId => void handleDeleteProject(projectId)}
-                    onStartNew={beginNewProject}
-                />
-
-                <section className="relative overflow-hidden rounded-[2rem] glass-premium dark:glass-premium-dark border border-white/30 dark:border-white/10 shadow-xl">
-                    <RoadmapCreationCanvas visible={isRoadmapLoading} ambition={roadmapCreationQuery} />
-                    <div className="border-b border-white/20 dark:border-white/10 px-5 py-4">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <div className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-700 dark:text-blue-200">
-                                {session?.active_agent || 'orchestrator'}
-                            </div>
-                            <div className="rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-purple-700 dark:text-purple-200">
-                                {currentDomain?.title || (selectedProjectId ? 'Project loaded' : 'No project selected')}
-                            </div>
-                            {currentSkill && (
-                                <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-200">
-                                    {currentSkill.title}
-                                </div>
-                            )}
-                        </div>
-                        <p className="mt-3 max-w-3xl text-sm text-neutral-600 dark:text-neutral-300">
-                            {isEntryMode
-                                ? 'Describe your ambition to generate a roadmap, trace your current knowledge, and unlock the guided lecture flow.'
-                                : 'This workspace stores your roadmap sessions, generated quizzes, adaptive knowledge state, and transcript on the backend.'}
-                        </p>
-                    </div>
-
-                    <div className="max-h-[calc(100vh-280px)] space-y-5 overflow-y-auto p-6">
-                        {isLearningMode ? (
-                            <JourneyStatusCard
-                                domainTitle={currentDomain?.title || 'Roadmap loading'}
-                                skillTitle={currentSkill?.title || 'Knowledge tracing in progress'}
-                                topicTitle={String(currentTopic?.title || currentTopic?.objective || 'Lecture unlocks after tracing')}
-                                domainProgressLabel={totalDomains > 0 ? `Domain ${Math.min(currentDomainIndex + 1, totalDomains)} of ${totalDomains}` : 'Preparing your roadmap'}
-                                skillProgressLabel={totalSkillsInDomain > 0 ? `Skill ${Math.min(currentSkillIndex + 1, totalSkillsInDomain)} of ${totalSkillsInDomain} in this domain` : 'Waiting for current skill'}
-                                topicProgressLabel={totalTopics > 0 ? `Topic ${Math.min((session?.state?.current_topic_index ?? 0) + 1, totalTopics)} of ${totalTopics}` : 'No topic lecture yet'}
-                            />
-                        ) : null}
-                        {messages.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto min-h-[420px]">
-                                <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-2xl">
-                                    <Radar className="h-10 w-10 text-neutral-600 dark:text-neutral-300" />
-                                </div>
-                                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white">Describe your ambition</h2>
-                                <p className="text-neutral-600 dark:text-neutral-400">
-                                    Tell the tutor what you want to become or build. We will generate the roadmap, reveal the selected track, calibrate your level, and then begin the lecture.
-                                </p>
-                            </div>
-                        ) : (
-                            messages.map((message, index) => (
-                                <motion.div
-                                    key={message.id}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.22, delay: index * 0.02 }}
-                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div className={`flex max-w-[90%] gap-3 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                                        <div className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center shadow-md ${
-                                            message.role === 'user'
-                                                ? 'bg-gradient-to-br from-neutral-800 to-neutral-900 dark:from-neutral-100 dark:to-neutral-200 text-white dark:text-neutral-900'
-                                                : message.role === 'system'
-                                                    ? 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
-                                                    : 'bg-gradient-to-br from-blue-500 to-purple-500 text-white'
-                                        }`}>
-                                            {message.role === 'user' ? <UserIcon className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                                        </div>
-                                        <div className={`px-5 py-3.5 rounded-2xl shadow-sm ${
-                                            message.role === 'user'
-                                                ? message.variant === 'ambition'
-                                                    ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-md ring-1 ring-white/10'
-                                                    : 'bg-gradient-to-br from-neutral-900 to-neutral-800 dark:from-neutral-100 dark:to-neutral-50 text-white dark:text-neutral-900 shadow-md'
-                                                : 'glass-premium dark:glass-premium-dark text-neutral-900 dark:text-white border border-white/30 dark:border-white/10'
-                                        }`}>
-                                            <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>li]:mb-1">
-                                                <ReactMarkdown>{message.content}</ReactMarkdown>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ))
-                        )}
-
-                        <div ref={messagesEndRef} />
-                    </div>
-
-                    <div className="p-4 glass-premium dark:glass-premium-dark border-t border-white/20 dark:border-white/10 backdrop-blur-xl">
-                        {pendingQuestion && !isQuizOverlayOpen ? (
-                            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
-                                <div>
-                                    <p className="font-semibold">Quiz paused</p>
-                                    <p className="mt-1 text-amber-900/75 dark:text-amber-100/75">
-                                        This project is still waiting on a quiz answer before the session can continue.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={reopenQuizOverlay}
-                                    disabled={busy}
-                                    className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/15 px-4 py-2 font-semibold text-amber-900 transition hover:bg-amber-500/25 dark:text-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    Continue Quiz
-                                    <ChevronRight className="h-4 w-4" />
-                                </button>
-                            </div>
-                        ) : null}
-
-                        <form onSubmit={handleSubmit} className="flex gap-3">
-                            <input
-                                value={input}
-                                onChange={event => setInput(event.target.value)}
-                                placeholder={inputPlaceholder(session, Boolean(pendingQuestion))}
-                                disabled={isStartModeOverlayOpen || Boolean(pendingQuestion) || busy}
-                                className="flex-1 px-5 py-3.5 bg-white/50 dark:bg-neutral-900/50 border-2 border-transparent rounded-xl focus:border-blue-500/50 focus:bg-white dark:focus:bg-neutral-900 focus-glow smooth-transition outline-none font-medium placeholder:text-neutral-500 dark:placeholder:text-neutral-400 text-neutral-900 dark:text-white"
-                            />
-                            <button
-                                type="submit"
-                                disabled={!input.trim() || isStartModeOverlayOpen || busy || Boolean(pendingQuestion)}
-                                className="p-3.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed smooth-transition shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40"
+                <main className="flex flex-1 flex-col px-4 py-6 sm:px-6 lg:px-8">
+                    <header className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <Link
+                                href="/"
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink)] transition hover:border-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                                aria-label="Back to home"
                             >
-                                <Send className="h-4 w-4" />
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.36em] text-[color:var(--ink-faint)]">Projectia Tutor</p>
+                                <h1 className="text-lg font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
+                                    Immersive Chat Studio
+                                </h1>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className={`hidden rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] sm:inline-flex ${statusTone(session?.status || 'idle')}`}>
+                                {busy ? 'Processing' : session?.status || 'idle'}
+                            </div>
+                            <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
+                            <button
+                                onClick={() => setIsDashboardOpen(true)}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink)] transition hover:border-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                                aria-label="Open dashboard"
+                            >
+                                <LayoutDashboard className="h-4 w-4" />
                             </button>
-                        </form>
-
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-600 dark:text-neutral-400">
-                            <span>{busy ? 'Waiting for backend orchestration...' : 'Ready for the next turn.'}</span>
-                            <button onClick={beginNewProject} className="font-semibold text-neutral-700 dark:text-neutral-300 transition hover:text-neutral-900 dark:hover:text-white">
-                                Start New Project
-                            </button>
                         </div>
-                    </div>
-                </section>
+                    </header>
 
-                <aside className="space-y-6">
-                    <section className="rounded-[2rem] glass-premium dark:glass-premium-dark p-5 shadow-xl border border-white/30 dark:border-white/10">
-                        <div className="flex items-center gap-2">
-                            <Target className="h-4 w-4 text-blue-600 dark:text-blue-300" />
-                            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-neutral-900 dark:text-white">Runtime State</h2>
-                        </div>
+                    <ChatSurface
+                        session={session}
+                        selectedProjectId={selectedProjectId}
+                        currentDomain={currentDomain}
+                        currentSkill={currentSkill}
+                        currentTopic={currentTopic}
+                        isEntryMode={isEntryMode}
+                        isLearningMode={isLearningMode}
+                        totalDomains={totalDomains}
+                        currentDomainIndex={currentDomainIndex}
+                        totalSkillsInDomain={totalSkillsInDomain}
+                        currentSkillIndex={currentSkillIndex}
+                        totalTopics={totalTopics}
+                        messages={messages}
+                        messagesEndRef={messagesEndRef}
+                        pendingQuestion={pendingQuestion}
+                        isQuizOverlayOpen={isQuizOverlayOpen}
+                        isStartModeOverlayOpen={isStartModeOverlayOpen}
+                        busy={busy}
+                        input={input}
+                        inputPlaceholder={inputPlaceholder(session, Boolean(pendingQuestion))}
+                        roadmapCreationQuery={roadmapCreationQuery}
+                        isRoadmapLoading={isRoadmapLoading}
+                        onInputChange={setInput}
+                        onSubmit={handleSubmit}
+                        onReopenQuizOverlay={reopenQuizOverlay}
+                        onBeginNewProject={beginNewProject}
+                    />
+                </main>
 
-                        <div className="mt-4 space-y-4 text-sm text-neutral-800 dark:text-neutral-200">
-                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
-                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Status</p>
-                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">{session?.status || 'idle'}</p>
-                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">{session?.active_agent || 'No active agent yet'}</p>
-                            </div>
-
-                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
-                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Current Domain</p>
-                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">{currentDomain?.title || 'Not started'}</p>
-                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">{currentDomain?.description || 'No domain selected yet.'}</p>
-                            </div>
-
-                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
-                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Current Skill</p>
-                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">{currentSkill?.title || 'Waiting for calibration'}</p>
-                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">{currentSkill?.description || 'The knowledge agent will lock onto the frontier skill.'}</p>
-                            </div>
-
-                            <div className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4">
-                                <p className="text-[11px] uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">Current Topic</p>
-                                <p className="mt-2 font-semibold text-neutral-900 dark:text-white">
-                                    {String(currentTopic?.title || currentTopic?.objective || 'Lesson plan not generated yet')}
-                                </p>
-                                <p className="mt-1 text-neutral-600 dark:text-neutral-400">
-                                    Topic index: {session?.state?.current_topic_index ?? 0} / {(session?.state?.lesson_plan || []).length || 0}
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-                </aside>
+                <div className={`fixed inset-y-0 right-0 z-30 transition-[width] duration-300 ${isRuntimeCollapsed ? 'w-7' : 'w-80'} lg:static lg:z-auto`}>
+                    <RuntimePanel
+                        session={session}
+                        currentDomain={currentDomain}
+                        currentSkill={currentSkill}
+                        currentTopic={currentTopic}
+                        collapsed={isRuntimeCollapsed}
+                        onToggleCollapse={() => setIsRuntimeCollapsed(prev => !prev)}
+                        className="h-full"
+                    />
+                </div>
             </div>
 
             <DashboardSection profile={profile} isOpen={isDashboardOpen} onClose={() => setIsDashboardOpen(false)} />
@@ -810,9 +778,9 @@ export default function ChatPage() {
             ) : null}
 
             {error ? (
-                <div className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-100 backdrop-blur-xl">
+                <div className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-200 backdrop-blur-xl">
                     <p className="font-semibold">Pipeline error</p>
-                    <p className="mt-1 text-red-700/80 dark:text-red-100/80">{error}</p>
+                    <p className="mt-1 text-red-200/80">{error}</p>
                 </div>
             ) : null}
         </div>

@@ -44,9 +44,9 @@ export function RoadmapCreationCanvas({ visible, ambition }: RoadmapCreationCanv
             context.clearRect(0, 0, width, height)
 
             const gradient = context.createLinearGradient(0, 0, width, height)
-            gradient.addColorStop(0, 'rgba(37, 99, 235, 0.28)')
-            gradient.addColorStop(0.45, 'rgba(124, 58, 237, 0.16)')
-            gradient.addColorStop(1, 'rgba(16, 185, 129, 0.18)')
+            gradient.addColorStop(0, 'rgba(215, 182, 106, 0.22)')
+            gradient.addColorStop(0.5, 'rgba(127, 209, 194, 0.16)')
+            gradient.addColorStop(1, 'rgba(143, 180, 255, 0.18)')
             context.fillStyle = gradient
             context.fillRect(0, 0, width, height)
 
@@ -58,7 +58,8 @@ export function RoadmapCreationCanvas({ visible, ambition }: RoadmapCreationCanv
                     if (x === 0) context.moveTo(x, y)
                     else context.lineTo(x, y)
                 }
-                context.strokeStyle = wave === 0 ? 'rgba(96, 165, 250, 0.65)' : wave === 1 ? 'rgba(192, 132, 252, 0.4)' : 'rgba(52, 211, 153, 0.28)'
+                context.strokeStyle =
+                    wave === 0 ? 'rgba(215, 182, 106, 0.55)' : wave === 1 ? 'rgba(127, 209, 194, 0.4)' : 'rgba(143, 180, 255, 0.3)'
                 context.lineWidth = 1.5 + wave * 0.4
                 context.stroke()
             }
@@ -76,7 +77,7 @@ export function RoadmapCreationCanvas({ visible, ambition }: RoadmapCreationCanv
 
             context.beginPath()
             context.arc(width * 0.78, height * 0.28, 58 + Math.sin(elapsed * 1.2) * 8, 0, Math.PI * 2)
-            context.fillStyle = 'rgba(59, 130, 246, 0.22)'
+            context.fillStyle = 'rgba(215, 182, 106, 0.18)'
             context.fill()
 
             animationFrame = window.requestAnimationFrame(draw)
@@ -101,9 +102,9 @@ export function RoadmapCreationCanvas({ visible, ambition }: RoadmapCreationCanv
                     className="absolute inset-0 z-20 overflow-hidden rounded-[2rem]"
                 >
                     <canvas ref={canvasRef} className="h-full w-full" />
-                    <div className="absolute inset-0 bg-neutral-950/45 backdrop-blur-[2px]" />
+                    <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
                     <div className="absolute inset-0 flex items-center justify-center px-6">
-                        <div className="max-w-2xl text-center text-white">
+                        <div className="max-w-2xl text-center text-[color:var(--ink)]">
                             <motion.div
                                 initial={{ scale: 0.92, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
@@ -114,14 +115,14 @@ export function RoadmapCreationCanvas({ visible, ambition }: RoadmapCreationCanv
                                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
                                 </div>
                             </motion.div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-blue-200/90">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--ink-faint)]">
                                 Building Your Roadmap
                             </p>
                             <h2 className="mt-4 text-3xl font-semibold sm:text-4xl">
                                 Turning your ambition into a guided learning journey
                             </h2>
-                            <p className="mt-4 text-sm text-white/75 sm:text-base">
-                                Analyzing: <span className="font-semibold text-white">{ambition}</span>
+                            <p className="mt-4 text-sm text-[color:var(--ink-soft)] sm:text-base">
+                                Analyzing: <span className="font-semibold text-[color:var(--ink)]">{ambition}</span>
                             </p>
                         </div>
                     </div>

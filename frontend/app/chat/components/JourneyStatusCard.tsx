@@ -29,16 +29,16 @@ function ProgressRow({
             layout
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-2xl border border-white/20 dark:border-white/10 bg-white/60 dark:bg-neutral-900/50 p-4"
+            className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--surface-2)] p-4"
         >
             <div className="flex items-start gap-3">
-                <div className="mt-0.5 rounded-xl border border-white/20 bg-white/60 p-2 text-blue-600 dark:border-white/10 dark:bg-neutral-900/60 dark:text-blue-300">
+                <div className="mt-0.5 rounded-xl border border-[color:var(--line-strong)] bg-[color:var(--surface)] p-2 text-[color:var(--accent)]">
                     {icon}
                 </div>
                 <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500 dark:text-neutral-400">{label}</p>
-                    <p className="mt-1 truncate text-base font-semibold text-neutral-900 dark:text-white">{value}</p>
-                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{subtitle}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--ink-faint)]">{label}</p>
+                    <p className="mt-1 truncate text-base font-semibold text-[color:var(--ink)]">{value}</p>
+                    <p className="mt-1 text-sm text-[color:var(--ink-soft)]">{subtitle}</p>
                 </div>
             </div>
         </motion.div>

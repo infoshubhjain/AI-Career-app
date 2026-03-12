@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, X } from 'lucide-react'
 
 import type { AgentQuestion } from '@/types'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface QuizOverlayProps {
     question: AgentQuestion
@@ -49,15 +50,15 @@ export function QuizOverlay({ question, busy, error = null, onSelect, onClose }:
 
     function optionClassName(index: number) {
         if (!revealAnswer || correctIndex === null) {
-            return 'border-white/10 bg-white/5 hover:border-blue-400/40 hover:bg-blue-500/10'
+            return 'border-[color:var(--line)] bg-[color:var(--surface-2)] hover:border-[color:var(--accent)]'
         }
         if (index === correctIndex) {
-            return 'border-emerald-400/50 bg-emerald-500/15 text-emerald-50'
+            return 'border-[color:var(--accent-2)] bg-[color:var(--accent-2)] text-[color:var(--ink)]'
         }
         if (selectedIndex === index && index !== correctIndex) {
             return 'border-red-400/50 bg-red-500/15 text-red-50'
         }
-        return 'border-white/10 bg-white/5 opacity-70'
+        return 'border-[color:var(--line)] bg-[color:var(--surface-2)] opacity-70'
     }
 
     return (
@@ -66,27 +67,29 @@ export function QuizOverlay({ question, busy, error = null, onSelect, onClose }:
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4"
+                className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             >
                 <motion.div
                     initial={{ scale: 0.97, opacity: 0, y: 12 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
-                    className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-white/10 bg-neutral-950 shadow-2xl"
+                    className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-[color:var(--line)] bg-[color:var(--surface)] shadow-[0_30px_100px_-60px_rgba(0,0,0,0.9)]"
                 >
-                    <div className="border-b border-white/10 px-6 py-5">
+                    <div className="border-b border-[color:var(--line)] px-6 py-5">
                         <div className="flex items-start justify-between gap-4">
                             <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-300">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
                                     {badgeLabel}
                                 </p>
-                                <h2 className="mt-3 text-2xl font-semibold text-white">{question.prompt}</h2>
+                                <div className="mt-3 text-[color:var(--ink)]">
+                                    <MarkdownRenderer content={question.prompt} variant="compact" size="lg" />
+                                </div>
                             </div>
                             <button
                                 type="button"
                                 onClick={onClose}
                                 disabled={busy}
                                 aria-label="Close quiz popup"
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-neutral-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--line)] bg-[color:var(--surface-2)] text-[color:var(--ink-faint)] transition hover:text-[color:var(--ink)] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <X className="h-4 w-4" />
                             </button>
@@ -99,12 +102,14 @@ export function QuizOverlay({ question, busy, error = null, onSelect, onClose }:
                                 key={option.id}
                                 onClick={() => void handleSelect(option.id, index, option.label)}
                                 disabled={busy || revealAnswer}
-                                className={`w-full rounded-2xl border px-5 py-4 text-left text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${optionClassName(index)}`}
+                                className={`w-full rounded-2xl border px-5 py-4 text-left text-[color:var(--ink)] transition disabled:cursor-not-allowed disabled:opacity-60 ${optionClassName(index)}`}
                             >
                                 <div className="flex items-center justify-between gap-3">
-                                    <span className="text-sm font-medium leading-relaxed">{option.label}</span>
+                                    <span className="text-sm font-medium leading-relaxed">
+                                        <MarkdownRenderer content={option.label} variant="compact" size="sm" />
+                                    </span>
                                     {index === correctIndex ? (
-                                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--accent-2)] bg-[color:var(--accent-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--ink)]">
                                             <CheckCircle2 className="h-3.5 w-3.5" />
                                             Correct
                                         </span>
@@ -114,7 +119,7 @@ export function QuizOverlay({ question, busy, error = null, onSelect, onClose }:
                         ))}
                     </div>
 
-                    <div className="border-t border-white/10 px-6 py-4 text-sm text-neutral-300">
+                    <div className="border-t border-[color:var(--line)] px-6 py-4 text-sm text-[color:var(--ink-faint)]">
                         {busy
                             ? 'Submitting your answer...'
                             : revealAnswer
