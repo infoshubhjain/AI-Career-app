@@ -393,7 +393,6 @@ class ConversationFlowMixin:
                 message=f"Not quite. {quiz['explanation']}\n\nReview the domain-level patterns again, then say `ready` for a new quiz question.",
             )
 
-        self._initialize_placement(state, session["roadmap_json"], domain_only=True)
         state["pending_domain_review"] = None
         if state.get("learning_path_mode") == "beginning":
             return await self._start_guided_skill(
@@ -402,10 +401,15 @@ class ConversationFlowMixin:
                 intro=f"Correct. {quiz['explanation']}\n\nDomain assessment passed. Starting the next domain.",
             )
 
-        quiz_bundle = await self._next_placement_probe(
+        current_index = self._absolute_index_from_progress(state, session["roadmap_json"])
+        self._initialize_binary_placement(state, session["roadmap_json"], low_index=current_index)
+        target_skill = self._placement_current_skill(state, session["roadmap_json"])
+        quiz_bundle = await self._create_placement_quiz(
             session=session,
             state=state,
-            user_message="Start the next roadmap placement checkpoint.",
+            target_skill=target_skill,
+            prior_question=None,
+            attempt_number=1,
         )
         updated = await self.store.update_session(
             session["id"],

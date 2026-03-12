@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -174,4 +175,67 @@ body {
       0 0 30px rgba(59, 130, 246, 0.2),
       0 0 40px rgba(59, 130, 246, 0.1);
   }
+}
+
+/* Markdown + Prism theme */
+.markdown-body pre,
+.markdown-body code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.markdown-body pre code {
+  color: #e6e1d6;
+}
+
+.markdown-body .token.comment,
+.markdown-body .token.prolog,
+.markdown-body .token.doctype,
+.markdown-body .token.cdata {
+  color: #7c8794;
+}
+
+.markdown-body .token.punctuation {
+  color: #cbd1d8;
+}
+
+.markdown-body .token.property,
+.markdown-body .token.tag,
+.markdown-body .token.boolean,
+.markdown-body .token.number,
+.markdown-body .token.constant,
+.markdown-body .token.symbol,
+.markdown-body .token.deleted {
+  color: #ffb870;
+}
+
+.markdown-body .token.selector,
+.markdown-body .token.attr-name,
+.markdown-body .token.string,
+.markdown-body .token.char,
+.markdown-body .token.builtin,
+.markdown-body .token.inserted {
+  color: #7fd1c2;
+}
+
+.markdown-body .token.operator,
+.markdown-body .token.entity,
+.markdown-body .token.url,
+.markdown-body .token.variable {
+  color: #b7c2cc;
+}
+
+.markdown-body .token.atrule,
+.markdown-body .token.attr-value,
+.markdown-body .token.function,
+.markdown-body .token.class-name {
+  color: #8fb4ff;
+}
+
+.markdown-body .token.keyword {
+  color: #d7b66a;
+}
+
+.markdown-body .token.regex,
+.markdown-body .token.important {
+  color: #ff8f6b;
 }

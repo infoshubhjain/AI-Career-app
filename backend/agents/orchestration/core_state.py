@@ -32,14 +32,22 @@ class CoreStateMixin:
             },
             "placement_state": {
                 "phase": "idle",
-                "question_budget_used": 0,
-                "max_questions": 6,
                 "recent_question_fingerprints": [],
                 "global_history": [],
                 "last_selected_skill_id": None,
                 "last_selected_score": None,
                 "frontier_index": None,
                 "stop_reason": None,
+                "low_index": None,
+                "high_index": None,
+                "current_index": None,
+                "current_skill_id": None,
+                "current_skill_attempts": 0,
+                "current_skill_history": [],
+                "last_mastered_index": None,
+                "last_unmastered_index": None,
+                "mastery_high": 0.85,
+                "mastery_low": 0.15,
             },
             "conversation_state": {
                 "history": [],
@@ -104,30 +112,73 @@ class CoreStateMixin:
     def _ensure_placement_state(self, state: dict[str, Any], roadmap_json: dict[str, Any]) -> dict[str, Any]:
         placement_state = state.setdefault("placement_state", {})
         placement_state.setdefault("phase", "idle")
-        placement_state.setdefault("question_budget_used", 0)
-        placement_state.setdefault("max_questions", 6)
         placement_state.setdefault("recent_question_fingerprints", [])
         placement_state.setdefault("global_history", [])
         placement_state.setdefault("last_selected_skill_id", None)
         placement_state.setdefault("last_selected_score", None)
         placement_state.setdefault("frontier_index", None)
         placement_state.setdefault("stop_reason", None)
+        placement_state.setdefault("low_index", None)
+        placement_state.setdefault("high_index", None)
+        placement_state.setdefault("current_index", None)
+        placement_state.setdefault("current_skill_id", None)
+        placement_state.setdefault("current_skill_attempts", 0)
+        placement_state.setdefault("current_skill_history", [])
+        placement_state.setdefault("last_mastered_index", None)
+        placement_state.setdefault("last_unmastered_index", None)
+        placement_state.setdefault("mastery_high", 0.85)
+        placement_state.setdefault("mastery_low", 0.15)
         return placement_state
 
-    def _initialize_placement(self, state: dict[str, Any], roadmap_json: dict[str, Any], *, domain_only: bool = False) -> None:
+    def _initialize_binary_placement(
+        self,
+        state: dict[str, Any],
+        roadmap_json: dict[str, Any],
+        *,
+        low_index: int | None = None,
+        high_index: int | None = None,
+    ) -> None:
         placement_state = self._ensure_placement_state(state, roadmap_json)
+        ordered = self._ordered_skills(roadmap_json)
+        if not ordered:
+            raise ValueError("Roadmap does not contain any skills for placement")
+        min_index = 0
+        max_index = len(ordered) - 1
+        bounded_low = max(min_index, int(low_index) if low_index is not None else min_index)
+        bounded_high = min(max_index, int(high_index) if high_index is not None else max_index)
+        if bounded_low > bounded_high:
+            bounded_low = min_index
+            bounded_high = max_index
+        current_index = (bounded_low + bounded_high) // 2
+        current_skill = ordered[current_index]
         placement_state.update(
             {
-                "phase": "probing",
-                "question_budget_used": 0,
+                "phase": "binary_search",
                 "recent_question_fingerprints": [],
                 "global_history": [],
                 "last_selected_skill_id": None,
                 "last_selected_score": None,
-                "frontier_index": self._absolute_index_from_progress(state, roadmap_json) if domain_only else None,
+                "frontier_index": None,
                 "stop_reason": None,
+                "low_index": bounded_low,
+                "high_index": bounded_high,
+                "current_index": current_index,
+                "current_skill_id": current_skill.get("id"),
+                "current_skill_attempts": 0,
+                "current_skill_history": [],
+                "last_mastered_index": None,
+                "last_unmastered_index": None,
+                "mastery_high": placement_state.get("mastery_high", 0.85),
+                "mastery_low": placement_state.get("mastery_low", 0.15),
             }
         )
+
+    def _placement_current_skill(self, state: dict[str, Any], roadmap_json: dict[str, Any]) -> dict[str, Any]:
+        placement_state = self._ensure_placement_state(state, roadmap_json)
+        current_index = placement_state.get("current_index")
+        if current_index is None:
+            raise ValueError("Placement current index is not set")
+        return self._skill_from_absolute_index(roadmap_json, int(current_index))
 
     def _placement_context_summary(self, state: dict[str, Any], roadmap_json: dict[str, Any]) -> dict[str, Any]:
         placement_state = self._ensure_placement_state(state, roadmap_json)
@@ -136,14 +187,18 @@ class CoreStateMixin:
         frontier = (state.get("knowledge_state") or {}).get("learning_frontier")
         return {
             "phase": placement_state.get("phase"),
-            "question_budget_used": placement_state.get("question_budget_used"),
-            "max_questions": placement_state.get("max_questions"),
             "stop_reason": placement_state.get("stop_reason"),
-            "selection_policy": "bkt_expected_information_gain",
+            "selection_policy": "binary_search_bkt",
             "frontier_index": placement_state.get("frontier_index"),
             "frontier": frontier,
             "last_selected_skill_id": placement_state.get("last_selected_skill_id"),
             "last_selected_score": placement_state.get("last_selected_score"),
+            "low_index": placement_state.get("low_index"),
+            "high_index": placement_state.get("high_index"),
+            "current_index": placement_state.get("current_index"),
+            "current_skill_id": placement_state.get("current_skill_id"),
+            "last_mastered_index": placement_state.get("last_mastered_index"),
+            "last_unmastered_index": placement_state.get("last_unmastered_index"),
             "recent_history": history[-4:],
             "skill_probability_summary": skill_summary[-8:],
         }

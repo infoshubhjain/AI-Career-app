@@ -38,90 +38,6 @@ class QuizRuntimeMixin:
         state["knowledge_state"]["learning_frontier"] = frontier
         return summaries
 
-    async def _next_placement_probe(self, *, session: dict[str, Any], state: dict[str, Any], user_message: str) -> dict[str, Any]:
-        ordered = self._ordered_skills(session["roadmap_json"])
-        placement_state = self._ensure_placement_state(state, session["roadmap_json"])
-        await self._refresh_project_knowledge_state(session=session, state=state)
-        recent_skill_ids = [
-            str(item.get("skill_id"))
-            for item in list(placement_state.get("global_history") or [])[-3:]
-            if item.get("skill_id")
-        ]
-        target = await self.knowledge_store.select_next_skill(
-            user_id=str(session["user_id"]),
-            project_id=str(session["project_id"]),
-            ordered_skills=ordered,
-            recent_skill_ids=recent_skill_ids,
-        )
-        if target is None:
-            raise ValueError("No skill is available for the next placement probe")
-        target_index = int(target.get("absolute_index", 0))
-        target_skill = ordered[target_index]
-        placement_state["phase"] = "probing"
-        placement_state["last_selected_skill_id"] = target_skill["id"]
-        placement_state["last_selected_score"] = float(target.get("selection_score") or 0.0)
-        self._set_progress_from_skill(state, target_skill, session["roadmap_json"])
-        state.setdefault("knowledge_state", {})["selection_reason"] = str(target.get("selection_reason") or "")
-        plan = self._algorithmic_placement_plan(target_skill=target_skill, target=target)
-        attempt_number = int(target.get("observation_count") or 0) + 1
-        confidence = float(target.get("confidence") or 0.0)
-        placement_stage = str(plan.get("placement_stage") or ("placement_confirm" if confidence >= 0.6 else "placement_probe"))
-        quiz_bundle = await self._create_quiz(
-            session=session,
-            state=state,
-            scope="knowledge_probe",
-            target_skill=target_skill,
-            retry_reason=str(plan.get("focus") or ""),
-            user_message=user_message,
-            placement_plan={
-                "question_kind": placement_stage,
-                "placement_stage": placement_stage,
-                "difficulty": str(plan.get("difficulty") or "medium"),
-                "concept_id": str(plan.get("concept_id") or ""),
-                "focus": str(plan.get("focus") or ""),
-                "attempt_number": attempt_number,
-                "absolute_index": target_index,
-                "intro_message": str(plan.get("message") or ""),
-                "selection_reason": str(target.get("selection_reason") or ""),
-                "selection_score": float(target.get("selection_score") or 0.0),
-                "project_p_know": float(target.get("project_p_know") or 0.0),
-                "global_p_know": float(target.get("global_p_know") or 0.0),
-                "confidence": confidence,
-            },
-        )
-        return {
-            "message": str(plan.get("message") or quiz_bundle["message"]),
-            "question": quiz_bundle["question"],
-            "state": quiz_bundle["state"],
-        }
-
-    def _algorithmic_placement_plan(self, *, target_skill: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
-        confidence = float(target.get("confidence") or 0.0)
-        p_know = float(target.get("project_p_know") or 0.5)
-        attempts = int(target.get("observation_count") or 0)
-        title = str(target_skill.get("title") or "this skill").strip()
-        description = str(target_skill.get("description") or "").strip()
-        focus = description[:120] if description else f"core working knowledge of {title}"
-        concept_id = self._slugify(focus or title)
-        if p_know >= 0.72:
-            difficulty = "hard"
-        elif p_know <= 0.38:
-            difficulty = "easy"
-        else:
-            difficulty = "medium"
-        placement_stage = "placement_confirm" if confidence >= 0.6 or attempts >= 2 else "placement_probe"
-        if placement_stage == "placement_confirm":
-            message = f"One more quick check around `{title}` to confirm your current level."
-        else:
-            message = f"Next, I’m checking your working knowledge of `{title}`."
-        return {
-            "placement_stage": placement_stage,
-            "difficulty": difficulty,
-            "focus": focus,
-            "concept_id": concept_id,
-            "message": message,
-        }
-
     async def _create_quiz(
         self,
         *,
@@ -226,6 +142,79 @@ class QuizRuntimeMixin:
             self._set_conversation_phase(updated_state, phase="domain_quiz", topic_id=None)
         elif scope == "knowledge_probe":
             self._set_conversation_phase(updated_state, phase="knowledge_quiz", topic_id=None)
+        return {"message": generated["message"], "question": self._quiz_to_question(quiz), "state": updated_state}
+
+    async def _create_placement_quiz(
+        self,
+        *,
+        session: dict[str, Any],
+        state: dict[str, Any],
+        target_skill: dict[str, Any],
+        prior_question: dict[str, Any] | None = None,
+        attempt_number: int = 1,
+    ) -> dict[str, Any]:
+        context = AgentContext(
+            session_id=session["id"],
+            user_id=str(session["user_id"]),
+            user_message=f"Generate a placement question for {target_skill.get('title') or 'this skill'}.",
+            state={
+                "quiz_scope": "placement_probe",
+                "placement_mode": "binary_search",
+                "target_skill": target_skill,
+                "prior_question": prior_question or {},
+                "attempt_number": attempt_number,
+            },
+            metadata={"stage": "placement_quiz_generation"},
+        )
+        generated = await self.quiz_agent.generate(context)
+        options = [
+            AgentAnswerOption(id=option_id, label=label)
+            for option_id, label in zip(("A", "B", "C", "D"), generated["options"])
+        ]
+        options.append(AgentAnswerOption(id=IDONT_KNOW_OPTION_ID, label=IDONT_KNOW_OPTION_LABEL))
+        quiz = await self.store.create_quiz(
+            {
+                "project_id": session["project_id"],
+                "session_id": session["id"],
+                "user_id": session["user_id"],
+                "question_kind": "placement_probe",
+                "source_agent": "quiz_agent",
+                "skill_id": target_skill.get("id"),
+                "domain_id": target_skill.get("domain_id"),
+                "concept_id": generated.get("concept_id"),
+                "difficulty": generated.get("difficulty") or "medium",
+                "placement_stage": "placement_probe",
+                "question_fingerprint": generated.get("question_fingerprint") or "",
+                "attempt_number": int(generated.get("attempt_number") or attempt_number),
+                "prompt": generated["prompt"],
+                "options": [option.model_dump() for option in options],
+                "correct_option_index": generated["correct_option_index"],
+                "explanation": generated["explanation"],
+                "focus": generated.get("focus", "") or "",
+                "status": "active",
+            }
+        )
+        updated_state = self._merge_state(
+            state,
+            {
+                "active_quiz_id": quiz["id"],
+                "active_quiz_kind": "placement_probe",
+                "knowledge_state": {
+                    "current_probe": {
+                        "quiz_id": quiz["id"],
+                        "skill_id": target_skill.get("id"),
+                        "skill_title": target_skill.get("title"),
+                        "absolute_index": target_skill.get("absolute_index"),
+                        "placement_stage": "placement_probe",
+                        "difficulty": generated.get("difficulty"),
+                        "concept_id": generated.get("concept_id"),
+                        "prompt": quiz["prompt"],
+                        "attempt_number": int(generated.get("attempt_number") or attempt_number),
+                    }
+                },
+            },
+        )
+        self._set_conversation_phase(updated_state, phase="knowledge_quiz", topic_id=None)
         return {"message": generated["message"], "question": self._quiz_to_question(quiz), "state": updated_state}
 
     def _quiz_to_question(self, quiz: dict[str, Any]) -> AgentQuestion:

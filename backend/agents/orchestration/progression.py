@@ -102,11 +102,15 @@ class ProgressionMixin:
         state["lesson_plan"] = []
         state["current_topic_index"] = 0
         state["skill_quiz_state"] = None
-        self._initialize_placement(state, session["roadmap_json"], domain_only=True)
-        quiz_bundle = await self._next_placement_probe(
+        current_index = self._absolute_index_from_progress(state, session["roadmap_json"])
+        self._initialize_binary_placement(state, session["roadmap_json"], low_index=current_index)
+        target_skill = self._placement_current_skill(state, session["roadmap_json"])
+        quiz_bundle = await self._create_placement_quiz(
             session=session,
             state=state,
-            user_message=f"Continue roadmap placement around {next_skill['title']}.",
+            target_skill=target_skill,
+            prior_question=None,
+            attempt_number=1,
         )
         updated = await self.store.update_session(
             session["id"],
@@ -114,7 +118,7 @@ class ProgressionMixin:
         )
         return self._session_response(
             updated,
-            message=f"{prefix}Skill complete. The knowledge agent is now checking your level for the next skill: {next_skill['title']}.".strip(),
+            message=f"{prefix}Skill complete. Next, a quick placement check will confirm the right starting point for {next_skill['title']}.".strip(),
             pending_questions=[quiz_bundle["question"]],
         )
 

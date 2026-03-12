@@ -14,6 +14,7 @@ class PlacementFlowMixin:
         is_correct = selected_index == int(quiz["correct_option_index"])
         current_probe = (state.get("knowledge_state") or {}).get("current_probe") or {}
         selected_label = self._selected_option_label(quiz, selected_index)
+        placement_state = self._ensure_placement_state(state, session["roadmap_json"])
         bkt_result = await self.knowledge_store.apply_quiz_observation(
             user_id=str(session["user_id"]),
             project_id=str(session["project_id"]),
@@ -21,16 +22,22 @@ class PlacementFlowMixin:
             quiz=quiz,
             attempt_id=None,
             is_correct=is_correct,
-            selection_reason=str(current_probe.get("selection_reason") or ""),
-            selection_score=current_probe.get("selection_score"),
+            selection_reason="binary_search",
+            selection_score=None,
+            override_p_learn=0.05,
+            override_p_guess=0.25,
+            override_p_slip=0.2,
         )
         if not bkt_result:
             raise ValueError("Knowledge probe is missing a skill_id and cannot update BKT state")
+        posterior_after = float(bkt_result["posterior_after"])
+        mastery_high = float(placement_state.get("mastery_high") or 0.85)
+        mastery_low = float(placement_state.get("mastery_low") or 0.15)
         result_message = self._placement_feedback_message(
             skill_title=str(current_probe.get("skill_title") or quiz.get("skill_id") or "this skill"),
             is_correct=is_correct,
             posterior_before=float(bkt_result["posterior_before"]),
-            posterior_after=float(bkt_result["posterior_after"]),
+            posterior_after=posterior_after,
             confidence=float(bkt_result["confidence"]),
         )
         attempt = await self._record_quiz_attempt(
@@ -54,8 +61,8 @@ class PlacementFlowMixin:
             is_correct=is_correct,
             posterior_before=float(bkt_result["posterior_before"]),
             posterior_after=float(bkt_result["posterior_after"]),
-            selection_reason=str(current_probe.get("selection_reason") or ""),
-            selection_score=current_probe.get("selection_score"),
+            selection_reason="binary_search",
+            selection_score=None,
         )
         self._update_bkt_skill_history(
             state=state,
@@ -67,8 +74,8 @@ class PlacementFlowMixin:
         state["active_quiz_id"] = None
         state["active_quiz_kind"] = None
         state["knowledge_state"]["current_probe"] = None
-        summaries = await self._refresh_project_knowledge_state(session=session, state=state)
-        self._append_placement_history(
+        placement_state["current_skill_attempts"] = int(placement_state.get("current_skill_attempts") or 0) + 1
+        self._record_binary_placement_history(
             state=state,
             quiz=quiz,
             current_probe=current_probe,
@@ -76,17 +83,59 @@ class PlacementFlowMixin:
             is_correct=is_correct,
             result=bkt_result,
         )
-        placement_state = self._ensure_placement_state(state, session["roadmap_json"])
-        should_stop, stop_reason = self.knowledge_store.should_stop(
-            summaries=summaries,
-            question_budget_used=int(placement_state.get("question_budget_used") or 0),
-            max_questions=int(placement_state.get("max_questions") or 6),
-        )
-        if should_stop:
-            placement_state["stop_reason"] = stop_reason
-            return await self._finalize_learning_frontier(session=session, state=state)
 
-        quiz_bundle = await self._next_placement_probe(session=session, state=state, user_message=result_message)
+        if mastery_low < posterior_after < mastery_high:
+            prior_question = {
+                "prompt": quiz.get("prompt"),
+                "focus": quiz.get("focus"),
+                "concept_id": quiz.get("concept_id"),
+            }
+            placement_state["current_skill_history"] = self._append_unique(
+                placement_state.get("current_skill_history"),
+                prior_question,
+            )[-4:]
+            target_skill = self._placement_current_skill(state, session["roadmap_json"])
+            quiz_bundle = await self._create_placement_quiz(
+                session=session,
+                state=state,
+                target_skill=target_skill,
+                prior_question=prior_question,
+                attempt_number=int(placement_state.get("current_skill_attempts") or 1) + 1,
+            )
+            updated = await self.store.update_session(
+                session["id"],
+                {"status": "awaiting_knowledge_answer", "active_agent": "quiz_agent", "state": quiz_bundle["state"]},
+            )
+            return self._session_response(updated, message=f"{result_message}\n\n{quiz_bundle['message']}", pending_questions=[quiz_bundle["question"]])
+
+        ordered = self._ordered_skills(session["roadmap_json"])
+        current_index_value = placement_state.get("current_index")
+        if current_index_value is None:
+            current_index_value = current_probe.get("absolute_index") or 0
+        current_index = int(current_index_value)
+        if posterior_after >= mastery_high:
+            placement_state["last_mastered_index"] = current_index
+            placement_state["low_index"] = current_index + 1
+        else:
+            placement_state["last_unmastered_index"] = current_index
+            placement_state["high_index"] = current_index - 1
+
+        next_index = self._next_binary_index(placement_state)
+        if next_index is None:
+            return await self._finalize_binary_placement(session=session, state=state, intro=result_message)
+
+        placement_state["current_index"] = next_index
+        placement_state["current_skill_id"] = ordered[next_index]["id"]
+        placement_state["current_skill_attempts"] = 0
+        placement_state["current_skill_history"] = []
+        target_skill = ordered[next_index]
+        quiz_bundle = await self._create_placement_quiz(
+            session=session,
+            state=state,
+            target_skill=target_skill,
+            prior_question=None,
+            attempt_number=1,
+        )
         updated = await self.store.update_session(
             session["id"],
             {"status": "awaiting_knowledge_answer", "active_agent": "quiz_agent", "state": quiz_bundle["state"]},
@@ -153,7 +202,7 @@ class PlacementFlowMixin:
         )
         skills[skill_id] = skill_state
 
-    def _append_placement_history(
+    def _record_binary_placement_history(
         self,
         *,
         state: dict[str, Any],
@@ -164,7 +213,6 @@ class PlacementFlowMixin:
         result: dict[str, Any],
     ) -> None:
         placement_state = state.setdefault("placement_state", {})
-        placement_state["question_budget_used"] = int(placement_state.get("question_budget_used", 0)) + 1
         placement_state["last_selected_skill_id"] = result.get("skill_id") or current_probe.get("skill_id")
         placement_state["last_selected_score"] = current_probe.get("selection_score")
         question_fingerprint = str(quiz.get("question_fingerprint") or "")
@@ -186,7 +234,7 @@ class PlacementFlowMixin:
             }
         )
         placement_state["global_history"] = history[-12:]
-        placement_state["phase"] = "probing"
+        placement_state["phase"] = "binary_search"
 
     def _placement_feedback_message(self, *, skill_title: str, is_correct: bool, posterior_before: float, posterior_after: float, confidence: float) -> str:
         direction = "up" if posterior_after >= posterior_before else "down"
@@ -195,6 +243,37 @@ class PlacementFlowMixin:
         if is_correct:
             return f"That moves your estimated mastery of `{skill_title}` {direction} to about {percent}%. I’ll use that signal to choose the next most revealing skill. Confidence is about {confidence_percent}%."
         return f"That lowers your estimated mastery of `{skill_title}` to about {percent}%. I’ll use that signal to probe the most informative neighboring skill next. Confidence is about {confidence_percent}%."
+
+    def _next_binary_index(self, placement_state: dict[str, Any]) -> int | None:
+        low_index = placement_state.get("low_index")
+        high_index = placement_state.get("high_index")
+        if low_index is None or high_index is None:
+            return None
+        if int(low_index) > int(high_index):
+            return None
+        return (int(low_index) + int(high_index)) // 2
+
+    async def _finalize_binary_placement(self, *, session: dict[str, Any], state: dict[str, Any], intro: str) -> AgentSessionResponse:
+        ordered = self._ordered_skills(session["roadmap_json"])
+        placement_state = self._ensure_placement_state(state, session["roadmap_json"])
+        placement_state["phase"] = "complete"
+        last_mastered = placement_state.get("last_mastered_index")
+        if last_mastered is None:
+            frontier_index = 0
+        else:
+            frontier_index = min(int(last_mastered) + 1, len(ordered) - 1)
+        placement_state["frontier_index"] = frontier_index
+        frontier_skill = ordered[frontier_index]
+        state.setdefault("knowledge_state", {})["learning_frontier"] = frontier_skill
+        self._set_progress_from_skill(state, frontier_skill, session["roadmap_json"])
+        lesson_plan = await self._build_lesson_plan(session, state, frontier_skill)
+        state["lesson_plan"] = lesson_plan
+        state["current_topic_index"] = 0
+        updated = await self.store.update_session(
+            session["id"],
+            {"status": "reviewing_topic", "active_agent": "conversation_agent", "state": state},
+        )
+        return await self._deliver_current_topic(updated, intro=intro)
 
     def _project_title(self, query: str) -> str:
         stripped = query.strip()
