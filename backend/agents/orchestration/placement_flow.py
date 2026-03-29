@@ -269,11 +269,18 @@ class PlacementFlowMixin:
         lesson_plan = await self._build_lesson_plan(session, state, frontier_skill)
         state["lesson_plan"] = lesson_plan
         state["current_topic_index"] = 0
+        focus_topic = lesson_plan[0] if lesson_plan else {"title": frontier_skill.get("title")}
+        state["focus_reveal"] = {
+            "topic_title": focus_topic.get("title") or frontier_skill.get("title"),
+            "skill_title": frontier_skill.get("title"),
+            "domain_title": frontier_skill.get("domain_title"),
+        }
+        self._set_conversation_phase(state, phase="focus_confirm", topic_id=focus_topic.get("id"), awaiting_quiz_consent=False)
         updated = await self.store.update_session(
             session["id"],
-            {"status": "reviewing_topic", "active_agent": "conversation_agent", "state": state},
+            {"status": "awaiting_focus_confirm", "active_agent": "orchestrator", "state": state},
         )
-        return await self._deliver_current_topic(updated, intro=intro)
+        return self._session_response(updated, message=intro)
 
     def _project_title(self, query: str) -> str:
         stripped = query.strip()

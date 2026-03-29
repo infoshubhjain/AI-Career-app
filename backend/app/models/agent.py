@@ -39,7 +39,7 @@ class AgentSessionCreateRequest(BaseModel):
 class AgentTurnRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     message: str | None = None
-    input_mode: Literal["text", "multiple_choice", "start_mode"] = "text"
+    input_mode: Literal["text", "multiple_choice", "start_mode", "focus_confirm"] = "text"
     question_id: str | None = None
     selected_option_id: str | None = None
     selected_option_index: int | None = None
@@ -56,6 +56,9 @@ class AgentTurnRequest(BaseModel):
         if self.input_mode == "start_mode":
             if self.selected_option_id not in {"beginning", "placement"}:
                 raise ValueError("selected_option_id must be 'beginning' or 'placement' for start-mode turns")
+            return self
+
+        if self.input_mode == "focus_confirm":
             return self
 
         if not (self.message or "").strip():

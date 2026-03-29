@@ -169,6 +169,8 @@ class RuntimeApiMixin:
             response = await self._handle_profile(session, turn)
         elif status == "awaiting_knowledge_answer":
             response = await self._handle_knowledge_turn(session, turn)
+        elif status == "awaiting_focus_confirm":
+            response = await self._handle_focus_confirm(session)
         elif status in {"awaiting_topic_followup", "awaiting_topic_quiz", "awaiting_skill_quiz", "reviewing_topic", "awaiting_domain_quiz", "reviewing_domain"}:
             response = await self._handle_conversation_turn(session, turn)
         else:
@@ -270,3 +272,10 @@ class RuntimeApiMixin:
             message=f"{intro}\n\n{quiz_bundle['message']}",
             pending_questions=[quiz_bundle["question"]],
         )
+
+    async def _handle_focus_confirm(self, session: dict[str, Any]) -> AgentSessionResponse:
+        state = session["state"]
+        if "focus_reveal" in state:
+            state.pop("focus_reveal", None)
+        session["state"] = state
+        return await self._deliver_current_topic(session, intro="Great. Let’s get started.")

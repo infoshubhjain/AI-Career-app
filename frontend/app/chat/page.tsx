@@ -37,6 +37,7 @@ import { TaskRevealOverlay } from './components/TaskRevealOverlay'
 import {
     AgentEvent,
     AgentProjectSummary,
+    AgentQuestion,
     AgentRoadmapDomain,
     AgentRoadmapSkill,
     AgentSessionResponse,
@@ -102,7 +103,7 @@ function getTopicKey(topic: Record<string, unknown> | null) {
 }
 
 function isInitialCalibrationStatus(status: string | null | undefined) {
-    return status === 'awaiting_start_mode' || status === 'awaiting_profile' || status === 'awaiting_knowledge_answer'
+    return status === 'awaiting_start_mode' || status === 'awaiting_profile' || status === 'awaiting_knowledge_answer' || status === 'awaiting_focus_confirm'
 }
 
 function shouldAppendAssistantTimelineMessage(response: AgentSessionResponse) {
@@ -134,6 +135,7 @@ function eventToTimelineMessage(event: AgentEvent): TimelineMessage | null {
     if (event.event_type === 'initial_query') return null
     if (event.role === 'user' && event.payload?.input_mode === 'start_mode') return null
     if (event.role === 'user' && event.payload?.input_mode === 'multiple_choice') return null
+    if (event.role === 'user' && event.payload?.input_mode === 'focus_confirm') return null
 
     const content =
         event.content ||
@@ -194,6 +196,10 @@ export default function ChatPage() {
     const [taskReveal, setTaskReveal] = useState<{ topicTitle: string; skillTitle: string; domainTitle?: string | null } | null>(null)
     const [isProjectsCollapsed, setIsProjectsCollapsed] = useState(false)
     const [isRuntimeCollapsed, setIsRuntimeCollapsed] = useState(false)
+    const [quizSubmitting, setQuizSubmitting] = useState(false)
+    const [displayedQuestion, setDisplayedQuestion] = useState<AgentQuestion | null>(null)
+    const [queuedQuestion, setQueuedQuestion] = useState<AgentQuestion | null>(null)
+    const [quizDrafts, setQuizDrafts] = useState<Record<string, number | null>>({})
     const streamingTimerRef = useRef<number | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const initializationStartedRef = useRef(false)
@@ -206,6 +212,9 @@ export default function ChatPage() {
     const currentTopic = useMemo(() => getCurrentTopic(session), [session])
     const currentTopicKey = useMemo(() => getTopicKey(currentTopic), [currentTopic])
     const pendingQuestion = useMemo(() => session?.pending_questions?.[0] || null, [session])
+    const activeQuestion = displayedQuestion || pendingQuestion
+    const selectedIndex = activeQuestion ? (quizDrafts[activeQuestion.id] ?? null) : null
+    const nextReady = Boolean(queuedQuestion && activeQuestion && queuedQuestion.id !== activeQuestion.id)
     const isStartModeOverlayOpen = Boolean(roadmapRevealLabel) && session?.status === 'awaiting_start_mode'
     const pendingQuizKey = useMemo(
         () => (session?.session_id && pendingQuestion?.id ? `${session.session_id}:${pendingQuestion.id}` : null),
@@ -219,6 +228,7 @@ export default function ChatPage() {
     const currentSkillIndex = session?.state?.roadmap_progress?.skill_index ?? 0
     const totalSkillsInDomain = currentDomain?.subdomains?.length || 0
     const totalTopics = (session?.state?.lesson_plan || []).length
+    const isFocusConfirm = session?.status === 'awaiting_focus_confirm'
     const { label: statusText, color: statusColor } = statusLabel(session?.status || 'idle', busy)
 
     useEffect(() => {
@@ -238,6 +248,23 @@ export default function ChatPage() {
     }, [messages])
 
     useEffect(() => {
+        if (!pendingQuestion) {
+            setDisplayedQuestion(null)
+            setQueuedQuestion(null)
+            setQuizSubmitting(false)
+            return
+        }
+        if (!displayedQuestion) {
+            setDisplayedQuestion(pendingQuestion)
+            return
+        }
+        if (displayedQuestion.id === pendingQuestion.id) {
+            return
+        }
+        setQueuedQuestion(pendingQuestion)
+    }, [displayedQuestion, pendingQuestion, queuedQuestion])
+
+    useEffect(() => {
         if (!pendingQuizKey) { setDismissedQuizKey(null); return }
         if (dismissedQuizKey && dismissedQuizKey !== pendingQuizKey) setDismissedQuizKey(null)
     }, [dismissedQuizKey, pendingQuizKey])
@@ -250,6 +277,7 @@ export default function ChatPage() {
             }
             return
         }
+        if (session.status === 'awaiting_focus_confirm') return
         if (lastSeenTopicKeyRef.current === currentTopicKey) return
         if (shouldRevealNextTaskRef.current && !isInitialCalibrationStatus(session.status)) {
             setTaskReveal({
@@ -275,6 +303,19 @@ export default function ChatPage() {
         void syncExpectedQuizState()
         return () => { cancelled = true }
     }, [pendingQuestion, session])
+
+    useEffect(() => {
+        if (!session) return
+        if (session.status !== 'awaiting_focus_confirm') return
+        const focus = session.state?.focus_reveal
+        if (!focus) return
+        shouldRevealNextTaskRef.current = false
+        setTaskReveal({
+            topicTitle: String(focus.topic_title || 'Next learning focus'),
+            skillTitle: String(focus.skill_title || 'Current skill'),
+            domainTitle: focus.domain_title ? String(focus.domain_title) : null,
+        })
+    }, [session])
 
     useEffect(() => {
         if (!user?.id || hasInitialized || initializationStartedRef.current) return
@@ -451,19 +492,39 @@ export default function ChatPage() {
         await continueSession({ user_id: user.id, message: trimmed, input_mode: 'text' })
     }
 
-    async function handleQuizSelect(optionId: string, optionIndex: number, optionLabel: string) {
-        if (!session || !user?.id || !pendingQuestion || busy) return
-        if (pendingQuizKey) {
-            setDismissedQuizKey(pendingQuizKey)
-        }
-        await continueSession({
+    function handleQuizChoice(optionIndex: number) {
+        if (!activeQuestion) return
+        setQuizDrafts(prev => ({ ...prev, [activeQuestion.id]: optionIndex }))
+    }
+
+    async function handleQuizSubmit() {
+        if (!session || !user?.id || !activeQuestion || quizSubmitting || busy) return
+        const selectedIndex = quizDrafts[activeQuestion.id]
+        if (selectedIndex === null || selectedIndex === undefined) return
+        const selectedOption = activeQuestion.options[selectedIndex]
+        if (!selectedOption) return
+        setQuizSubmitting(true)
+        const response = await continueSession({
             user_id: user.id,
-            message: optionLabel,
+            message: selectedOption.label,
             input_mode: 'multiple_choice',
-            question_id: pendingQuestion.id,
-            selected_option_id: optionId,
-            selected_option_index: optionIndex,
+            question_id: activeQuestion.id,
+            selected_option_id: selectedOption.id,
+            selected_option_index: selectedIndex,
         })
+        setQuizSubmitting(false)
+        if (response?.pending_questions?.length) {
+            setQueuedQuestion(response.pending_questions[0])
+        } else {
+            setQueuedQuestion(null)
+        }
+    }
+
+    function handleNextQuestion() {
+        if (!queuedQuestion) return
+        setDisplayedQuestion(queuedQuestion)
+        setQueuedQuestion(null)
+        setQuizDrafts(prev => ({ ...prev, [queuedQuestion.id]: null }))
     }
 
     async function handleStartModeSelection(mode: 'beginning' | 'placement') {
@@ -472,7 +533,13 @@ export default function ChatPage() {
         if (response && response.status !== 'awaiting_start_mode') setRoadmapRevealLabel(null)
     }
 
-    function dismissQuizOverlay() { if (!pendingQuizKey || busy) return; setDismissedQuizKey(pendingQuizKey) }
+    async function handleFocusConfirm() {
+        setTaskReveal(null)
+        if (!session || !user?.id || busy) return
+        await continueSession({ user_id: user.id, message: 'Get started', input_mode: 'focus_confirm' })
+    }
+
+    function dismissQuizOverlay() { if (!pendingQuizKey || busy || quizSubmitting) return; setDismissedQuizKey(pendingQuizKey) }
     function reopenQuizOverlay() { setDismissedQuizKey(null) }
 
     function beginNewProject() {
@@ -534,8 +601,8 @@ export default function ChatPage() {
                 bg-white dark:bg-neutral-900
                 border-r border-neutral-200 dark:border-neutral-800
                 transition-all duration-300 ease-in-out shrink-0
-                ${isSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72 lg:translate-x-0'}
-                ${isSidebarCollapsed ? 'lg:w-0 lg:border-r-0 lg:overflow-hidden' : 'lg:w-72'}
+                ${isSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:translate-x-0'}
+                ${isSidebarCollapsed ? 'lg:w-0 lg:border-r-0 lg:overflow-hidden' : 'lg:w-64'}
             `}>
                 {/* Sidebar header */}
                 <div className="flex items-center justify-between px-4 py-4 border-b border-neutral-200 dark:border-neutral-800">
@@ -589,7 +656,7 @@ export default function ChatPage() {
             <div className="flex flex-col flex-1 min-w-0 h-full">
 
                 {/* Top bar */}
-                <header className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shrink-0">
+                <header className="flex items-center justify-between px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shrink-0">
                     <div className="flex items-center gap-3 min-w-0">
                         {/* Mobile: open drawer. Desktop: toggle collapse */}
                         <button
@@ -606,13 +673,19 @@ export default function ChatPage() {
                             <ArrowLeft className="w-4 h-4" />
                         </Link>
                         <div className="min-w-0">
-                            <h1 className="text-sm font-semibold text-neutral-900 dark:text-white truncate">
+                            <h1 className="text-[13px] font-semibold text-neutral-900 dark:text-white truncate">
                                 {projectTitle || (isEntryMode ? 'New Project' : 'Career Tutor')}
                             </h1>
                             <div className="flex items-center gap-1.5 mt-0.5">
                                 {busy && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
                                 <p className={`text-xs font-medium ${statusColor}`}>{statusText}</p>
                             </div>
+                            {isLearningMode ? (
+                                <p className="mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
+                                    {currentDomain?.title || 'Domain loading'} • {currentSkill?.title || 'Skill tracing'} •{' '}
+                                    {String(currentTopic?.title || currentTopic?.objective || 'Topic pending')}
+                                </p>
+                            ) : null}
                         </div>
                     </div>
 
@@ -632,29 +705,6 @@ export default function ChatPage() {
                         </button>
                     </div>
                 </header>
-
-                {/* Journey status bar (only in learning mode) */}
-                <AnimatePresence>
-                    {isLearningMode && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 shrink-0 overflow-hidden"
-                        >
-                            <div className="px-4 py-3">
-                                <JourneyStatusCard
-                                    domainTitle={currentDomain?.title || 'Roadmap loading'}
-                                    skillTitle={currentSkill?.title || 'Knowledge tracing in progress'}
-                                    topicTitle={String(currentTopic?.title || currentTopic?.objective || 'Lecture unlocks after tracing')}
-                                    domainProgressLabel={totalDomains > 0 ? `${Math.min(currentDomainIndex + 1, totalDomains)} / ${totalDomains}` : '—'}
-                                    skillProgressLabel={totalSkillsInDomain > 0 ? `${Math.min(currentSkillIndex + 1, totalSkillsInDomain)} / ${totalSkillsInDomain}` : '—'}
-                                    topicProgressLabel={totalTopics > 0 ? `${Math.min((session?.state?.current_topic_index ?? 0) + 1, totalTopics)} / ${totalTopics}` : '—'}
-                                />
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
                 {/* Messages area */}
                 <div className="flex-1 overflow-y-auto">
@@ -678,17 +728,17 @@ export default function ChatPage() {
                             )}
                         </div>
                     ) : (
-                        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+                        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6 text-[15px]">
                             {messages.map((message, index) => (
                                 <motion.div
                                     key={message.id}
                                     initial={{ opacity: 0, y: 8 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.2, delay: Math.min(index * 0.01, 0.15) }}
-                                    className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                                    className={`relative flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                                 >
                                     {/* Avatar */}
-                                    <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-sm ${
+                                    <div className={`absolute top-0 ${message.role === 'user' ? '-right-10' : '-left-10'} w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-sm ${
                                         message.role === 'user'
                                             ? 'bg-neutral-800 dark:bg-neutral-200 dark:text-neutral-900'
                                             : message.role === 'system'
@@ -702,14 +752,14 @@ export default function ChatPage() {
                                     </div>
 
                                     {/* Bubble */}
-                                    <div className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
+                                    <div className={`w-full rounded-2xl px-4 py-3 ${message.role === 'user' ? 'shadow-sm' : ''} ${
                                         message.role === 'user'
                                             ? message.variant === 'ambition'
                                                 ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white'
                                                 : 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900'
-                                            : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white'
+                                            : 'bg-transparent text-neutral-900 dark:text-white'
                                     }`}>
-                                        <div className="text-sm leading-relaxed">
+                                        <div className="text-base leading-relaxed">
                                             <MarkdownRenderer content={message.content} variant="compact" size="sm" />
                                         </div>
                                     </div>
@@ -726,7 +776,7 @@ export default function ChatPage() {
                                     <div className="w-8 h-8 rounded-full flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
                                         <Bot className="w-3.5 h-3.5 text-white" />
                                     </div>
-                                    <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl px-4 py-3 shadow-sm">
+                                    <div className="bg-transparent rounded-2xl px-4 py-3">
                                         <div className="flex gap-1 items-center h-5">
                                             {[0, 1, 2].map(i => (
                                                 <motion.div
@@ -747,7 +797,7 @@ export default function ChatPage() {
                 </div>
 
                 {/* Input area */}
-                <div className="shrink-0 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-4">
+                <div className="shrink-0 bg-neutral-950 px-4 py-3">
                     {/* Quiz paused banner */}
                     {pendingQuestion && !isQuizOverlayOpen && (
                         <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-2.5 text-sm">
@@ -797,11 +847,23 @@ export default function ChatPage() {
                 topicTitle={taskReveal?.topicTitle || 'Next learning task'}
                 skillTitle={taskReveal?.skillTitle || 'Current skill'}
                 domainTitle={taskReveal?.domainTitle}
-                onComplete={() => setTaskReveal(null)}
+                actionLabel={isFocusConfirm ? 'Get started' : 'Continue'}
+                onComplete={isFocusConfirm ? handleFocusConfirm : () => setTaskReveal(null)}
             />
 
-            {pendingQuestion && isQuizOverlayOpen && (
-                <QuizOverlay question={pendingQuestion} busy={busy} error={error} onSelect={handleQuizSelect} onClose={dismissQuizOverlay} />
+            {activeQuestion && isQuizOverlayOpen && (
+                <QuizOverlay
+                    question={activeQuestion}
+                    busy={busy}
+                    submitting={quizSubmitting}
+                    selectedIndex={selectedIndex}
+                    nextReady={nextReady}
+                    error={error}
+                    onSelectIndex={handleQuizChoice}
+                    onSubmit={handleQuizSubmit}
+                    onNext={handleNextQuestion}
+                    onClose={dismissQuizOverlay}
+                />
             )}
 
             <AnimatePresence>

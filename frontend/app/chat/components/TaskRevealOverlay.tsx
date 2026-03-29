@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { BookOpen, Sparkles } from 'lucide-react'
 
@@ -9,16 +8,11 @@ interface TaskRevealOverlayProps {
     topicTitle: string
     skillTitle: string
     domainTitle?: string | null
+    actionLabel?: string
     onComplete: () => void
 }
 
-export function TaskRevealOverlay({ visible, topicTitle, skillTitle, domainTitle, onComplete }: TaskRevealOverlayProps) {
-    useEffect(() => {
-        if (!visible) return
-        const timeout = window.setTimeout(onComplete, 2200)
-        return () => window.clearTimeout(timeout)
-    }, [visible, onComplete])
-
+export function TaskRevealOverlay({ visible, topicTitle, skillTitle, domainTitle, actionLabel = 'Get started', onComplete }: TaskRevealOverlayProps) {
     return (
         <AnimatePresence>
             {visible ? (
@@ -50,6 +44,15 @@ export function TaskRevealOverlay({ visible, topicTitle, skillTitle, domainTitle
                                 {skillTitle}
                                 {domainTitle ? ` in ${domainTitle}` : ''}
                             </p>
+                            <div className={`mt-8 inline-flex rounded-full p-[1px] ${actionLabel ? 'bg-gradient-to-r from-blue-500/80 to-purple-500/80 shadow-[0_0_24px_rgba(59,130,246,0.35)]' : 'bg-[color:var(--line)]'}`}>
+                            <button
+                                type="button"
+                                onClick={onComplete}
+                                className="inline-flex items-center justify-center rounded-full bg-black px-6 py-2.5 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--ink)] transition"
+                            >
+                                {actionLabel}
+                            </button>
+                            </div>
                         </div>
                     </motion.div>
                 </motion.div>
