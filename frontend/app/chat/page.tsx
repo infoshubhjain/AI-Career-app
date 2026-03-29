@@ -2,17 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
-<<<<<<< HEAD
 import { motion, AnimatePresence } from 'framer-motion'
-import ReactMarkdown from 'react-markdown'
 import {
     ArrowLeft, Bot, ChevronRight, LayoutDashboard,
     Radar, User as UserIcon, Menu, X, Sparkles,
     Loader2, PlusCircle
 } from 'lucide-react'
-=======
-import { ArrowLeft, LayoutDashboard } from 'lucide-react'
->>>>>>> feature/chat_redesign
+
+import { JourneyStatusCard } from './components/JourneyStatusCard'
+import { RoadmapCreationCanvas } from './components/RoadmapCreationCanvas'
 
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
@@ -29,6 +27,7 @@ import {
 import { AnimatedAIChatInput } from '@/components/ui/animated-ai-chat'
 import { DashboardSection } from './components/DashboardSection'
 import { ChatSurface } from './components/ChatSurface'
+import { MarkdownRenderer } from './components/MarkdownRenderer'
 import { ProgressionHeader } from './components/ProgressionHeader'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { QuizOverlay } from './components/QuizOverlay'
@@ -110,7 +109,6 @@ function shouldAppendAssistantTimelineMessage(response: AgentSessionResponse) {
     return !isInitialCalibrationStatus(response.status)
 }
 
-<<<<<<< HEAD
 function statusLabel(status: string, busy: boolean) {
     if (busy) return { label: 'Thinking…', color: 'text-blue-500 dark:text-blue-400' }
     if (status.includes('quiz')) return { label: 'Quiz', color: 'text-amber-600 dark:text-amber-400' }
@@ -119,15 +117,6 @@ function statusLabel(status: string, busy: boolean) {
     if (status === 'completed') return { label: 'Complete', color: 'text-purple-600 dark:text-purple-400' }
     if (status === 'idle') return { label: 'Ready', color: 'text-neutral-500 dark:text-neutral-400' }
     return { label: status.replace(/_/g, ' '), color: 'text-neutral-500 dark:text-neutral-400' }
-=======
-function statusTone(status: string) {
-    if (status.includes('quiz')) return 'border-[color:var(--accent)] bg-[color:var(--surface-2)] text-[color:var(--accent)]'
-    if (status.includes('knowledge')) return 'border-[color:var(--accent-2)] bg-[color:var(--surface-2)] text-[color:var(--accent-2)]'
-    if (status.includes('teach')) return 'border-[color:var(--accent-3)] bg-[color:var(--surface-2)] text-[color:var(--accent-3)]'
-    if (status.includes('profile')) return 'border-[color:var(--accent)] bg-[color:var(--surface-2)] text-[color:var(--ink)]'
-    if (status === 'completed') return 'border-[color:var(--accent)] bg-[color:var(--surface-2)] text-[color:var(--accent)]'
-    return 'border-[color:var(--line)] bg-[color:var(--surface-2)] text-[color:var(--ink-faint)]'
->>>>>>> feature/chat_redesign
 }
 
 function inputPlaceholder(session: AgentSessionResponse | null, hasPendingQuiz: boolean) {
@@ -249,26 +238,8 @@ export default function ChatPage() {
     }, [messages])
 
     useEffect(() => {
-<<<<<<< HEAD
         if (!pendingQuizKey) { setDismissedQuizKey(null); return }
         if (dismissedQuizKey && dismissedQuizKey !== pendingQuizKey) setDismissedQuizKey(null)
-=======
-        return () => {
-            if (streamingTimerRef.current) {
-                window.clearInterval(streamingTimerRef.current)
-            }
-        }
-    }, [])
-
-    useEffect(() => {
-        if (!pendingQuizKey) {
-            setDismissedQuizKey(null)
-            return
-        }
-        if (dismissedQuizKey && dismissedQuizKey !== pendingQuizKey) {
-            setDismissedQuizKey(null)
-        }
->>>>>>> feature/chat_redesign
     }, [dismissedQuizKey, pendingQuizKey])
 
     useEffect(() => {
@@ -417,13 +388,9 @@ export default function ChatPage() {
         const { data: syncedSession } = await getAgentSession(data.session_id)
         setSession(syncedSession ? hydrateSession(syncedSession) : data)
         setSelectedProjectId(data.project_id || selectedProjectId)
-<<<<<<< HEAD
-        if (shouldAppendAssistantTimelineMessage(data)) setMessages(prev => [...prev, buildAssistantMessage(data)])
-=======
         if (shouldAppendAssistantTimelineMessage(data)) {
             streamAssistantMessage(data.message)
         }
->>>>>>> feature/chat_redesign
         await refreshProjects(data.project_id || selectedProjectId || undefined)
         setBusy(false)
         if (profile) {
@@ -486,14 +453,9 @@ export default function ChatPage() {
 
     async function handleQuizSelect(optionId: string, optionIndex: number, optionLabel: string) {
         if (!session || !user?.id || !pendingQuestion || busy) return
-<<<<<<< HEAD
-        await continueSession({ user_id: user.id, message: optionLabel, input_mode: 'multiple_choice', question_id: pendingQuestion.id, selected_option_id: optionId, selected_option_index: optionIndex })
-=======
-
         if (pendingQuizKey) {
             setDismissedQuizKey(pendingQuizKey)
         }
-
         await continueSession({
             user_id: user.id,
             message: optionLabel,
@@ -502,7 +464,6 @@ export default function ChatPage() {
             selected_option_id: optionId,
             selected_option_index: optionIndex,
         })
->>>>>>> feature/chat_redesign
     }
 
     async function handleStartModeSelection(mode: 'beginning' | 'placement') {
@@ -522,40 +483,19 @@ export default function ChatPage() {
         setIsSidebarOpen(false)
     }
 
-    const themeVars: CSSProperties & Record<string, string> = {
-        '--base': '#0b0c0f',
-        '--surface': 'rgba(18,20,26,0.92)',
-        '--surface-2': 'rgba(24,28,36,0.76)',
-        '--line': 'rgba(255,255,255,0.08)',
-        '--line-strong': 'rgba(255,255,255,0.16)',
-        '--ink': '#f4f1e9',
-        '--ink-soft': '#c9c4b8',
-        '--ink-faint': '#8e8a7c',
-        '--accent': '#d7b66a',
-        '--accent-2': '#7fd1c2',
-        '--accent-3': '#8fb4ff',
-        fontFamily: "'Sora', sans-serif",
-    }
-
     if (loading) {
         return (
-<<<<<<< HEAD
             <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
                 <div className="flex flex-col items-center gap-3">
                     <div className="w-10 h-10 rounded-full border-2 border-blue-500/30 border-t-blue-500 animate-spin" />
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading workspace…</p>
                 </div>
-=======
-            <div className="min-h-screen flex items-center justify-center" style={themeVars}>
-                <div className="h-12 w-12 animate-spin rounded-full border-2 border-[color:var(--line)] border-t-[color:var(--accent)]" />
->>>>>>> feature/chat_redesign
             </div>
         )
     }
 
     if (!user) {
         return (
-<<<<<<< HEAD
             <div className="min-h-screen flex items-center justify-center p-6 bg-neutral-50 dark:bg-neutral-950">
                 <div className="max-w-sm w-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 text-center shadow-xl">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center mx-auto mb-4">
@@ -565,24 +505,6 @@ export default function ChatPage() {
                     <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">Your projects and progress are saved to your account.</p>
                     <Link href="/auth/login" className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-md hover:opacity-90 transition-opacity">
                         Sign In
-=======
-            <div className="min-h-screen flex items-center justify-center p-6 bg-[color:var(--base)] text-[color:var(--ink)]" style={themeVars}>
-                <style jsx global>{`
-                    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@300;400;500;600&display=swap');
-                `}</style>
-                <div className="max-w-md rounded-[2rem] border border-[color:var(--line)] bg-[color:var(--surface)] p-8 text-center shadow-[0_40px_120px_-70px_rgba(0,0,0,0.9)]">
-                    <h1 className="text-2xl font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                        Sign in to start your learning session
-                    </h1>
-                    <p className="mt-3 text-sm text-[color:var(--ink-soft)]">
-                        Your projects, quizzes, and conversation history are now stored server-side per account.
-                    </p>
-                    <Link
-                        href="/auth/login"
-                        className="mt-6 inline-flex items-center justify-center rounded-full bg-[linear-gradient(90deg,var(--accent),var(--accent-2))] px-5 py-3 text-sm font-semibold text-[#1c160a] shadow-[0_18px_60px_-30px_rgba(0,0,0,0.8)]"
-                    >
-                        Go to Login
->>>>>>> feature/chat_redesign
                     </Link>
                 </div>
             </div>
@@ -592,7 +514,6 @@ export default function ChatPage() {
     const projectTitle = projects.find(p => p.id === selectedProjectId)?.title
 
     return (
-<<<<<<< HEAD
         <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-neutral-950">
             {/* ── Mobile sidebar backdrop ── */}
             <AnimatePresence>
@@ -788,8 +709,8 @@ export default function ChatPage() {
                                                 : 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900'
                                             : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white'
                                     }`}>
-                                        <div className="text-sm leading-relaxed prose prose-sm dark:prose-invert max-w-none [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5 [&>li]:mb-1 [&>pre]:bg-neutral-100 [&>pre]:dark:bg-neutral-900 [&>pre]:rounded-lg [&>pre]:p-3 [&>code]:bg-neutral-100 [&>code]:dark:bg-neutral-900 [&>code]:rounded [&>code]:px-1">
-                                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                                        <div className="text-sm leading-relaxed">
+                                            <MarkdownRenderer content={message.content} variant="compact" size="sm" />
                                         </div>
                                     </div>
                                 </motion.div>
@@ -857,102 +778,6 @@ export default function ChatPage() {
                             Press Enter to send · Shift+Enter for new line
                         </p>
                     </div>
-=======
-        <div className="relative h-screen w-full overflow-hidden bg-[color:var(--base)] text-[color:var(--ink)]" style={themeVars}>
-            <style jsx global>{`
-                @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@300;400;500;600&display=swap');
-            `}</style>
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,_rgba(215,182,106,0.18)_0%,_rgba(11,12,15,0.0)_55%),radial-gradient(70%_60%_at_90%_10%,_rgba(127,209,194,0.12)_0%,_rgba(11,12,15,0.0)_60%),radial-gradient(90%_70%_at_10%_90%,_rgba(143,180,255,0.1)_0%,_rgba(11,12,15,0.0)_55%)]" />
-
-            <div className="relative z-10 flex h-screen w-full overflow-hidden">
-                <div className={`fixed inset-y-0 left-0 z-30 transition-[width] duration-300 ${isProjectsCollapsed ? 'w-7' : 'w-80'} lg:static lg:z-auto`}>
-                    <ProjectSidebar
-                        projects={projects}
-                        selectedProjectId={selectedProjectId}
-                        busy={busy}
-                        onSelect={projectId => void loadProject(projectId)}
-                        onDelete={projectId => void handleDeleteProject(projectId)}
-                        onStartNew={beginNewProject}
-                        collapsed={isProjectsCollapsed}
-                        onToggleCollapse={() => setIsProjectsCollapsed(prev => !prev)}
-                        className="h-full"
-                    />
-                </div>
-
-                <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
-                    <header className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <Link
-                                href="/"
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink)] transition hover:border-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-                                aria-label="Back to home"
-                            >
-                                <ArrowLeft className="h-4 w-4" />
-                            </Link>
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.36em] text-[color:var(--ink-faint)]">Projectia Tutor</p>
-                                <h1 className="text-lg font-semibold" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-                                    Immersive Chat Studio
-                                </h1>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                            <div className={`hidden rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] sm:inline-flex ${statusTone(session?.status || 'idle')}`}>
-                                {busy ? 'Processing' : session?.status || 'idle'}
-                            </div>
-                            <ProgressionHeader level={profile?.current_level || 1} xp={profile?.xp || 0} />
-                            <button
-                                onClick={() => setIsDashboardOpen(true)}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--line)] bg-[color:var(--surface)] text-[color:var(--ink)] transition hover:border-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-                                aria-label="Open dashboard"
-                            >
-                                <LayoutDashboard className="h-4 w-4" />
-                            </button>
-                        </div>
-                    </header>
-
-                    <ChatSurface
-                        session={session}
-                        selectedProjectId={selectedProjectId}
-                        currentDomain={currentDomain}
-                        currentSkill={currentSkill}
-                        currentTopic={currentTopic}
-                        isEntryMode={isEntryMode}
-                        isLearningMode={isLearningMode}
-                        totalDomains={totalDomains}
-                        currentDomainIndex={currentDomainIndex}
-                        totalSkillsInDomain={totalSkillsInDomain}
-                        currentSkillIndex={currentSkillIndex}
-                        totalTopics={totalTopics}
-                        messages={messages}
-                        messagesEndRef={messagesEndRef}
-                        pendingQuestion={pendingQuestion}
-                        isQuizOverlayOpen={isQuizOverlayOpen}
-                        isStartModeOverlayOpen={isStartModeOverlayOpen}
-                        busy={busy}
-                        input={input}
-                        inputPlaceholder={inputPlaceholder(session, Boolean(pendingQuestion))}
-                        roadmapCreationQuery={roadmapCreationQuery}
-                        isRoadmapLoading={isRoadmapLoading}
-                        onInputChange={setInput}
-                        onSubmit={handleSubmit}
-                        onReopenQuizOverlay={reopenQuizOverlay}
-                        onBeginNewProject={beginNewProject}
-                    />
-                </main>
-
-                <div className={`fixed inset-y-0 right-0 z-30 transition-[width] duration-300 ${isRuntimeCollapsed ? 'w-7' : 'w-80'} lg:static lg:z-auto`}>
-                    <RuntimePanel
-                        session={session}
-                        currentDomain={currentDomain}
-                        currentSkill={currentSkill}
-                        currentTopic={currentTopic}
-                        collapsed={isRuntimeCollapsed}
-                        onToggleCollapse={() => setIsRuntimeCollapsed(prev => !prev)}
-                        className="h-full"
-                    />
->>>>>>> feature/chat_redesign
                 </div>
             </div>
 
@@ -979,7 +804,6 @@ export default function ChatPage() {
                 <QuizOverlay question={pendingQuestion} busy={busy} error={error} onSelect={handleQuizSelect} onClose={dismissQuizOverlay} />
             )}
 
-<<<<<<< HEAD
             <AnimatePresence>
                 {error && (
                     <motion.div
@@ -996,14 +820,6 @@ export default function ChatPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
-=======
-            {error ? (
-                <div className="fixed bottom-5 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-sm text-red-200 backdrop-blur-xl">
-                    <p className="font-semibold">Pipeline error</p>
-                    <p className="mt-1 text-red-200/80">{error}</p>
-                </div>
-            ) : null}
->>>>>>> feature/chat_redesign
         </div>
     )
 }
