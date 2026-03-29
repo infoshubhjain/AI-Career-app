@@ -88,9 +88,10 @@ export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: 
     const compactText = size === 'lg' ? 'text-base' : size === 'sm' ? 'text-[13px]' : 'text-sm'
     const paragraphText = compact ? compactText : baseText
     return (
-        <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
+        <div className="markdown-body">
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
                 h1: ({ children }) => (
                     <h1
                         className={`${compact ? 'mt-2 text-2xl' : size === 'lg' ? 'mt-6 text-4xl' : 'mt-6 text-3xl'} font-semibold tracking-tight text-[color:var(--ink)]`}
@@ -214,9 +215,10 @@ export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: 
                     const html = Prism.highlight(raw, grammar, language)
                     return <CodeBlock raw={raw} html={html} language={language} />
                 },
-            }}
-        >
-            {content}
-        </ReactMarkdown>
+                }}
+            >
+                {content}
+            </ReactMarkdown>
+        </div>
     )
 }
