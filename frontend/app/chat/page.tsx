@@ -9,7 +9,6 @@ import {
     Loader2, PlusCircle
 } from 'lucide-react'
 
-import { JourneyStatusCard } from './components/JourneyStatusCard'
 import { RoadmapCreationCanvas } from './components/RoadmapCreationCanvas'
 
 import { useAuth } from '@/contexts/auth-context'
@@ -25,9 +24,13 @@ import {
     type AgentTurnPayload,
 } from '@/app/lib/agent-api'
 import { AnimatedAIChatInput } from '@/components/ui/animated-ai-chat'
+import { applyXPGain, XP_REWARDS } from '@/lib/progression'
 import { DashboardSection } from './components/DashboardSection'
 import { ChatSurface } from './components/ChatSurface'
+import { JourneyStatusCard } from './components/JourneyStatusCard'
+import { LevelUpModal } from './components/LevelUpModal'
 import { MarkdownRenderer } from './components/MarkdownRenderer'
+import { MilestoneToastStack, type MilestoneEvent } from './components/MilestoneToast'
 import { ProgressionHeader } from './components/ProgressionHeader'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { QuizOverlay } from './components/QuizOverlay'
@@ -201,6 +204,11 @@ export default function ChatPage() {
     const [queuedQuestion, setQueuedQuestion] = useState<AgentQuestion | null>(null)
     const [quizDrafts, setQuizDrafts] = useState<Record<string, number | null>>({})
     const streamingTimerRef = useRef<number | null>(null)
+    const [levelUpModal, setLevelUpModal] = useState<number | null>(null)
+    const [milestones, setMilestones] = useState<(MilestoneEvent & { id: string })[]>([])
+    const lastSessionStatusRef = useRef<string | null>(null)
+    const lastDomainIndexRef = useRef<number | null>(null)
+    const lastSkillIndexRef = useRef<number | null>(null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const initializationStartedRef = useRef(false)
     const sessionCreationInFlightRef = useRef(false)
@@ -307,7 +315,7 @@ export default function ChatPage() {
     useEffect(() => {
         if (!session) return
         if (session.status !== 'awaiting_focus_confirm') return
-        const focus = session.state?.focus_reveal
+        const focus = session.state?.focus_reveal as Record<string, unknown> | null | undefined
         if (!focus) return
         shouldRevealNextTaskRef.current = false
         setTaskReveal({
@@ -369,6 +377,9 @@ export default function ChatPage() {
         )
         lastSeenTopicKeyRef.current = getTopicKey(getCurrentTopic(hydratedSession))
         shouldRevealNextTaskRef.current = false
+        lastSessionStatusRef.current = hydratedSession.status
+        lastDomainIndexRef.current = hydratedSession.state?.roadmap_progress?.domain_index ?? 0
+        lastSkillIndexRef.current = hydratedSession.state?.roadmap_progress?.skill_index ?? 0
         setBusy(false)
         setIsSidebarOpen(false)
     }
@@ -387,6 +398,19 @@ export default function ChatPage() {
             return
         }
         setBusy(false)
+    }
+
+    function pushMilestone(event: Omit<MilestoneEvent, never>) {
+        setMilestones(prev => [...prev, { ...event, id: `ms-${Date.now()}-${Math.random()}` }])
+    }
+
+    async function awardXP(gain: number) {
+        if (!user?.id || !profile) return
+        const { newXP, newLevel, leveledUp } = applyXPGain(profile.xp || 0, gain)
+        setProfile(prev => prev ? { ...prev, xp: newXP, current_level: newLevel } : null)
+        if (leveledUp) setLevelUpModal(newLevel)
+        const supabase = createClient()
+        if (supabase) await supabase.from('profiles').update({ xp: newXP, current_level: newLevel }).eq('id', user.id)
     }
 
     async function startSession(query: string) {
@@ -434,12 +458,51 @@ export default function ChatPage() {
         }
         await refreshProjects(data.project_id || selectedProjectId || undefined)
         setBusy(false)
-        if (profile) {
-            const newXP = profile.xp + 10
-            setProfile(prev => (prev ? { ...prev, xp: newXP } : null))
-            const supabase = createClient()
-            if (supabase) await supabase.from('profiles').update({ xp: newXP }).eq('id', user.id)
+
+        // ── Gamification: detect milestones and award XP ──
+        // Use `data` (direct API response) — it carries last_quiz_correct before sync overwrites session
+        const prevStatus = lastSessionStatusRef.current
+        const nextStatus = data.status
+        const nextDomainIdx = data.state?.roadmap_progress?.domain_index ?? 0
+        const nextSkillIdx = data.state?.roadmap_progress?.skill_index ?? 0
+
+        if (payload.input_mode === 'multiple_choice') {
+            // Quiz graded — backend sets last_quiz_correct on the state it returns
+            if (data.state?.last_quiz_correct === true) {
+                pushMilestone({ type: 'quiz_perfect', title: 'Correct answer!', xpGained: XP_REWARDS.QUIZ_CORRECT })
+                await awardXP(XP_REWARDS.QUIZ_CORRECT)
+            } else {
+                await awardXP(XP_REWARDS.MESSAGE_SENT)
+            }
+        } else if (lastDomainIndexRef.current !== null && nextDomainIdx > lastDomainIndexRef.current) {
+            // Domain index advanced → previous domain completed
+            const prevDomainTitle = session?.roadmap?.domains?.[lastDomainIndexRef.current]?.title || 'Domain complete'
+            pushMilestone({ type: 'domain_complete', title: prevDomainTitle, xpGained: XP_REWARDS.DOMAIN_COMPLETE })
+            await awardXP(XP_REWARDS.DOMAIN_COMPLETE)
+        } else if (
+            lastSkillIndexRef.current !== null &&
+            nextSkillIdx !== lastSkillIndexRef.current &&
+            nextDomainIdx === (lastDomainIndexRef.current ?? 0)
+        ) {
+            // Skill index advanced within same domain → skill completed
+            const prevSkillTitle = session?.roadmap?.domains?.[nextDomainIdx]?.subdomains?.[lastSkillIndexRef.current]?.title || 'Skill mastered'
+            pushMilestone({ type: 'skill_complete', title: prevSkillTitle, xpGained: XP_REWARDS.SKILL_COMPLETE })
+            await awardXP(XP_REWARDS.SKILL_COMPLETE)
+        } else if (nextStatus === 'reviewing_topic' && prevStatus !== 'reviewing_topic') {
+            // Status just entered reviewing_topic → a new topic lecture is starting
+            const topicIdx = data.state?.current_topic_index ?? 0
+            const lessonPlan = data.state?.lesson_plan ?? []
+            const topicTitle = String((lessonPlan[topicIdx] as Record<string, unknown>)?.title || 'Topic complete')
+            pushMilestone({ type: 'topic_complete', title: topicTitle, xpGained: XP_REWARDS.TOPIC_COMPLETE })
+            await awardXP(XP_REWARDS.TOPIC_COMPLETE)
+        } else {
+            await awardXP(XP_REWARDS.MESSAGE_SENT)
         }
+
+        lastSessionStatusRef.current = nextStatus
+        lastDomainIndexRef.current = nextDomainIdx
+        lastSkillIndexRef.current = nextSkillIdx
+
         return data
     }
 
@@ -547,6 +610,7 @@ export default function ChatPage() {
         setInput(''); setError(null); setRoadmapCreationQuery('')
         setIsRoadmapLoading(false); setRoadmapRevealLabel(null); setTaskReveal(null)
         lastSeenTopicKeyRef.current = null; shouldRevealNextTaskRef.current = false
+        lastSessionStatusRef.current = null; lastDomainIndexRef.current = null; lastSkillIndexRef.current = null
         setIsSidebarOpen(false)
     }
 
@@ -582,6 +646,19 @@ export default function ChatPage() {
 
     return (
         <div className="flex h-screen overflow-hidden bg-neutral-50 dark:bg-neutral-950">
+            {/* ── Level-up modal ── */}
+            <AnimatePresence>
+                {levelUpModal !== null && (
+                    <LevelUpModal level={levelUpModal} onClose={() => setLevelUpModal(null)} />
+                )}
+            </AnimatePresence>
+
+            {/* ── Milestone toasts ── */}
+            <MilestoneToastStack
+                milestones={milestones}
+                onDismiss={id => setMilestones(prev => prev.filter(m => m.id !== id))}
+            />
+
             {/* ── Mobile sidebar backdrop ── */}
             <AnimatePresence>
                 {isSidebarOpen && (

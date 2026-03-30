@@ -219,6 +219,7 @@ class ConversationFlowMixin:
             await self._refresh_project_knowledge_state(session=session, state=state)
         state["active_quiz_id"] = None
         state["active_quiz_kind"] = None
+        state["last_quiz_correct"] = is_correct
 
         if not is_correct:
             self._set_conversation_phase(state, phase="review", topic_id=self._current_topic(state).get("id"), awaiting_quiz_consent=False)
@@ -331,6 +332,7 @@ class ConversationFlowMixin:
 
         state["active_quiz_id"] = None
         state["active_quiz_kind"] = None
+        state["last_quiz_correct"] = is_correct
         skill_quiz_state = dict(state.get("skill_quiz_state") or {})
         answered_questions = int(skill_quiz_state.get("answered_questions") or 0) + 1
         total_questions = int(skill_quiz_state.get("total_questions") or 3)
@@ -381,6 +383,7 @@ class ConversationFlowMixin:
         await self._record_quiz_attempt(session, quiz, selected_index, is_correct)
         state["active_quiz_id"] = None
         state["active_quiz_kind"] = None
+        state["last_quiz_correct"] = is_correct
 
         if not is_correct:
             self._set_conversation_phase(state, phase="domain_review", topic_id=None, awaiting_quiz_consent=False)
@@ -434,7 +437,7 @@ class ConversationFlowMixin:
         )
         decision = await self.conversation_agent.respond(context)
         updated_state = self._merge_state(state, decision.state_patch)
-        self._set_conversation_phase(updated_state, phase="awaiting_quiz_ready", topic_id=topic.get("id"), awaiting_quiz_consent=True)
+        self._set_conversation_phase(updated_state, phase="followup", topic_id=topic.get("id"), awaiting_quiz_consent=True)
         updated = await self.store.update_session(
             session["id"],
             {"status": "awaiting_topic_followup", "active_agent": "conversation_agent", "state": updated_state},

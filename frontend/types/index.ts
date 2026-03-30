@@ -116,6 +116,10 @@ export interface AgentSessionState {
     pending_domain_review?: Record<string, unknown> | null
     active_quiz_id?: string | null
     active_quiz_kind?: string | null
+    last_quiz_correct?: boolean | null
+    skill_quiz_state?: Record<string, unknown> | null
+    learning_style?: string | null
+    learning_path_mode?: string | null
     [key: string]: unknown
 }
 
