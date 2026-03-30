@@ -214,6 +214,8 @@ export default function ChatPage() {
     const sessionCreationInFlightRef = useRef(false)
     const lastSeenTopicKeyRef = useRef<string | null>(null)
     const shouldRevealNextTaskRef = useRef(false)
+    const profileRef = useRef<UserProfile | null>(null)
+    const lastTopicIndexRef = useRef<number | null>(null)
 
     const currentDomain = useMemo(() => getCurrentDomain(session), [session])
     const currentSkill = useMemo(() => getCurrentSkill(session), [session])
@@ -239,15 +241,27 @@ export default function ChatPage() {
     const isFocusConfirm = session?.status === 'awaiting_focus_confirm'
     const { label: statusText, color: statusColor } = statusLabel(session?.status || 'idle', busy)
 
+    // Keep a ref that always reflects the latest profile value (avoids stale closure in awardXP)
+    useEffect(() => { profileRef.current = profile }, [profile])
+
     useEffect(() => {
         if (user?.id) {
-            const fetchProfile = async () => {
+            const fetchOrCreateProfile = async () => {
                 const supabase = createClient()
                 if (!supabase) return
-                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-                setProfile(data)
+                const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+                if (data) { setProfile(data); return }
+                // Profile missing (new user) — create a default row
+                if (error?.code === 'PGRST116') {
+                    const { data: created } = await supabase
+                        .from('profiles')
+                        .insert({ id: user.id, xp: 0, current_level: 1, streak_days: 0 })
+                        .select('*')
+                        .single()
+                    if (created) setProfile(created)
+                }
             }
-            void fetchProfile()
+            void fetchOrCreateProfile()
         }
     }, [user?.id])
 
@@ -380,6 +394,7 @@ export default function ChatPage() {
         lastSessionStatusRef.current = hydratedSession.status
         lastDomainIndexRef.current = hydratedSession.state?.roadmap_progress?.domain_index ?? 0
         lastSkillIndexRef.current = hydratedSession.state?.roadmap_progress?.skill_index ?? 0
+        lastTopicIndexRef.current = hydratedSession.state?.current_topic_index ?? null
         setBusy(false)
         setIsSidebarOpen(false)
     }
@@ -405,12 +420,21 @@ export default function ChatPage() {
     }
 
     async function awardXP(gain: number) {
-        if (!user?.id || !profile) return
-        const { newXP, newLevel, leveledUp } = applyXPGain(profile.xp || 0, gain)
+        if (!user?.id) return
+        // Use ref to always get the latest profile value, never a stale closure
+        const currentProfile = profileRef.current
+        if (!currentProfile) return
+        const { newXP, newLevel, leveledUp } = applyXPGain(currentProfile.xp || 0, gain)
         setProfile(prev => prev ? { ...prev, xp: newXP, current_level: newLevel } : null)
         if (leveledUp) setLevelUpModal(newLevel)
         const supabase = createClient()
-        if (supabase) await supabase.from('profiles').update({ xp: newXP, current_level: newLevel }).eq('id', user.id)
+        if (supabase) {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ xp: newXP, current_level: newLevel })
+                .eq('id', user.id)
+            if (error) console.error('[awardXP] Failed to persist XP:', error)
+        }
     }
 
     async function startSession(query: string) {
@@ -431,10 +455,16 @@ export default function ChatPage() {
             }
             logPipeline('create_session_success', data)
             const { data: syncedSession } = await getAgentSession(data.session_id)
-            setSession(syncedSession ? hydrateSession(syncedSession) : data)
+            const resolvedSession = syncedSession ? hydrateSession(syncedSession) : data
+            setSession(resolvedSession)
             setSelectedProjectId(data.project_id || null)
             setIsRoadmapLoading(false)
             setRoadmapRevealLabel(toRoadmapLabel(data.roadmap?.normalized_title || data.roadmap?.query || query))
+            // Initialize gamification refs so first continueSession has correct baselines
+            lastSessionStatusRef.current = resolvedSession.status
+            lastDomainIndexRef.current = resolvedSession.state?.roadmap_progress?.domain_index ?? 0
+            lastSkillIndexRef.current = resolvedSession.state?.roadmap_progress?.skill_index ?? 0
+            lastTopicIndexRef.current = resolvedSession.state?.current_topic_index ?? null
             await refreshProjects(data.project_id || undefined)
             setBusy(false)
         } finally {
@@ -488,13 +518,21 @@ export default function ChatPage() {
             const prevSkillTitle = session?.roadmap?.domains?.[nextDomainIdx]?.subdomains?.[lastSkillIndexRef.current]?.title || 'Skill mastered'
             pushMilestone({ type: 'skill_complete', title: prevSkillTitle, xpGained: XP_REWARDS.SKILL_COMPLETE })
             await awardXP(XP_REWARDS.SKILL_COMPLETE)
-        } else if (nextStatus === 'reviewing_topic' && prevStatus !== 'reviewing_topic') {
-            // Status just entered reviewing_topic → a new topic lecture is starting
-            const topicIdx = data.state?.current_topic_index ?? 0
-            const lessonPlan = data.state?.lesson_plan ?? []
-            const topicTitle = String((lessonPlan[topicIdx] as Record<string, unknown>)?.title || 'Topic complete')
-            pushMilestone({ type: 'topic_complete', title: topicTitle, xpGained: XP_REWARDS.TOPIC_COMPLETE })
-            await awardXP(XP_REWARDS.TOPIC_COMPLETE)
+        } else if (nextStatus === 'reviewing_topic') {
+            // Only award topic XP when the topic index actually advances (not on quiz failure re-review)
+            const nextTopicIdx = data.state?.current_topic_index ?? 0
+            const prevTopicIdx = lastTopicIndexRef.current
+            const topicAdvanced = prevTopicIdx !== null && nextTopicIdx > prevTopicIdx
+            const freshTopic = prevTopicIdx === null && prevStatus !== 'reviewing_topic'
+            if (topicAdvanced || freshTopic) {
+                const lessonPlan = data.state?.lesson_plan ?? []
+                const topicTitle = String((lessonPlan[nextTopicIdx] as Record<string, unknown>)?.title || 'Topic complete')
+                pushMilestone({ type: 'topic_complete', title: topicTitle, xpGained: XP_REWARDS.TOPIC_COMPLETE })
+                await awardXP(XP_REWARDS.TOPIC_COMPLETE)
+            } else {
+                await awardXP(XP_REWARDS.MESSAGE_SENT)
+            }
+            lastTopicIndexRef.current = nextTopicIdx
         } else {
             await awardXP(XP_REWARDS.MESSAGE_SENT)
         }
@@ -610,7 +648,7 @@ export default function ChatPage() {
         setInput(''); setError(null); setRoadmapCreationQuery('')
         setIsRoadmapLoading(false); setRoadmapRevealLabel(null); setTaskReveal(null)
         lastSeenTopicKeyRef.current = null; shouldRevealNextTaskRef.current = false
-        lastSessionStatusRef.current = null; lastDomainIndexRef.current = null; lastSkillIndexRef.current = null
+        lastSessionStatusRef.current = null; lastDomainIndexRef.current = null; lastSkillIndexRef.current = null; lastTopicIndexRef.current = null
         setIsSidebarOpen(false)
     }
 

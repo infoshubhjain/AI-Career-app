@@ -83,6 +83,7 @@ function CodeBlock({
 }
 
 export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: MarkdownRendererProps) {
+    if (!content) return null
     const compact = variant === 'compact'
     const baseText = size === 'lg' ? 'text-lg' : size === 'sm' ? 'text-sm' : 'text-[15px]'
     const compactText = size === 'lg' ? 'text-base' : size === 'sm' ? 'text-[13px]' : 'text-sm'

@@ -1,4 +1,4 @@
-import { ActionXP, getXPForLevel } from '@/lib/supabase/progression-service';
+import { getXPForLevel } from '@/lib/supabase/progression-service';
 
 interface ProgressionHeaderProps {
     level: number;
