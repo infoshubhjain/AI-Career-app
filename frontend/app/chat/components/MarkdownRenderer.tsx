@@ -4,6 +4,9 @@ import { useState } from 'react'
 import Prism from 'prismjs'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { CodePlayground } from './CodePlayground'
+
+const PLAYGROUND_LANGS = new Set(['javascript', 'typescript', 'python', 'html', 'js', 'ts', 'py'])
 
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-c'
@@ -212,6 +215,10 @@ export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: 
                         sh: 'bash',
                     }
                     let language = aliasMap[rawLanguage] ?? rawLanguage
+                    // For runnable languages, show the interactive playground
+                    if (PLAYGROUND_LANGS.has(rawLanguage) || PLAYGROUND_LANGS.has(language)) {
+                        return <CodePlayground initialCode={raw} language={language} />
+                    }
                     const grammar = Prism.languages[language] ?? Prism.languages.markup
                     const html = Prism.highlight(raw, grammar, language)
                     return <CodeBlock raw={raw} html={html} language={language} />
