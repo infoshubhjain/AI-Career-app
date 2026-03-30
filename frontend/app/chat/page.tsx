@@ -605,19 +605,22 @@ export default function ChatPage() {
         const selectedOption = activeQuestion.options[selectedIndex]
         if (!selectedOption) return
         setQuizSubmitting(true)
-        const response = await continueSession({
-            user_id: user.id,
-            message: selectedOption.label,
-            input_mode: 'multiple_choice',
-            question_id: activeQuestion.id,
-            selected_option_id: selectedOption.id,
-            selected_option_index: selectedIndex,
-        })
-        setQuizSubmitting(false)
-        if (response?.pending_questions?.length) {
-            setQueuedQuestion(response.pending_questions[0])
-        } else {
-            setQueuedQuestion(null)
+        try {
+            const response = await continueSession({
+                user_id: user.id,
+                message: selectedOption.label,
+                input_mode: 'multiple_choice',
+                question_id: activeQuestion.id,
+                selected_option_id: selectedOption.id,
+                selected_option_index: selectedIndex,
+            })
+            if (response?.pending_questions?.length) {
+                setQueuedQuestion(response.pending_questions[0])
+            } else {
+                setQueuedQuestion(null)
+            }
+        } finally {
+            setQuizSubmitting(false)
         }
     }
 

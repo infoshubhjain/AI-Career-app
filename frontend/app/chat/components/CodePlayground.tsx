@@ -30,31 +30,73 @@ function isRunnable(lang: string): lang is SupportedLang {
     return RUNNABLE_LANGS.includes(lang as SupportedLang)
 }
 
-// ── JavaScript / TypeScript execution ────────────────────────────────────────
+// ── JavaScript / TypeScript execution (Web Worker + 5s timeout) ─────────────
 
-function runJavaScript(code: string): { output: string; error: string | null } {
-    const logs: string[] = []
-    const errors: string[] = []
+const TIMEOUT_MS = 5000
 
-    // Sandboxed console
-    const fakeConsole = {
-        log: (...args: unknown[]) => logs.push(args.map(a => formatValue(a)).join(' ')),
-        error: (...args: unknown[]) => errors.push(args.map(a => formatValue(a)).join(' ')),
-        warn: (...args: unknown[]) => logs.push('⚠ ' + args.map(a => formatValue(a)).join(' ')),
-        info: (...args: unknown[]) => logs.push('ℹ ' + args.map(a => formatValue(a)).join(' ')),
-        table: (data: unknown) => logs.push(formatValue(data)),
+function runJavaScript(code: string): Promise<{ output: string; error: string | null }> {
+    return new Promise(resolve => {
+        // Build a self-contained worker script that intercepts console and posts back results
+        const workerSrc = `
+self.onmessage = function(e) {
+    var logs = [];
+    var errors = [];
+    var fakeConsole = {
+        log: function() { logs.push(Array.from(arguments).map(formatVal).join(' ')); },
+        error: function() { errors.push(Array.from(arguments).map(formatVal).join(' ')); },
+        warn: function() { logs.push('\\u26A0 ' + Array.from(arguments).map(formatVal).join(' ')); },
+        info: function() { logs.push('\\u2139 ' + Array.from(arguments).map(formatVal).join(' ')); },
+        table: function(d) { logs.push(formatVal(d)); },
+    };
+    function formatVal(v) {
+        if (v === null) return 'null';
+        if (v === undefined) return 'undefined';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'object') { try { return JSON.stringify(v, null, 2); } catch(e) { return String(v); } }
+        return String(v);
     }
-
     try {
-        // eslint-disable-next-line no-new-func
-        const fn = new Function('console', code)
-        fn(fakeConsole)
-    } catch (e) {
-        return { output: logs.join('\n'), error: String(e) }
+        var fn = new Function('console', e.data);
+        fn(fakeConsole);
+        self.postMessage({ output: logs.join('\\n') || '(no output)', error: errors.length ? errors.join('\\n') : null });
+    } catch(err) {
+        self.postMessage({ output: logs.join('\\n'), error: String(err) });
     }
+};
+`
+        let settled = false
+        const blob = new Blob([workerSrc], { type: 'application/javascript' })
+        const url = URL.createObjectURL(blob)
+        const worker = new Worker(url)
 
-    if (errors.length > 0) return { output: logs.join('\n'), error: errors.join('\n') }
-    return { output: logs.join('\n') || '(no output)', error: null }
+        const timer = setTimeout(() => {
+            if (settled) return
+            settled = true
+            worker.terminate()
+            URL.revokeObjectURL(url)
+            resolve({ output: '', error: '⏱ Execution timed out (5s). Check for infinite loops.' })
+        }, TIMEOUT_MS)
+
+        worker.onmessage = (e) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            worker.terminate()
+            URL.revokeObjectURL(url)
+            resolve(e.data as { output: string; error: string | null })
+        }
+
+        worker.onerror = (e) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            worker.terminate()
+            URL.revokeObjectURL(url)
+            resolve({ output: '', error: e.message || 'Unknown worker error' })
+        }
+
+        worker.postMessage(code)
+    })
 }
 
 function formatValue(v: unknown): string {
@@ -122,15 +164,22 @@ finally:
 _stdout_val = _stdout.getvalue()
 _stderr_val = _stderr.getvalue()
 `
-    try {
-        await py.loadPackagesFromImports(code)
-        await py.runPythonAsync(wrapper)
-        const out = await py.runPythonAsync('_stdout_val') as string
-        const err = await py.runPythonAsync('_stderr_val') as string
-        return { output: out || '(no output)', error: err || null }
-    } catch (e) {
-        return { output: '', error: String(e) }
-    }
+    const PYTHON_TIMEOUT_MS = 10000
+    const timeout = new Promise<{ output: string; error: string | null }>(resolve =>
+        setTimeout(() => resolve({ output: '', error: '⏱ Execution timed out (10s). Check for infinite loops.' }), PYTHON_TIMEOUT_MS)
+    )
+    const execution = (async () => {
+        try {
+            await py.loadPackagesFromImports(code)
+            await py.runPythonAsync(wrapper)
+            const out = await py.runPythonAsync('_stdout_val') as string
+            const err = await py.runPythonAsync('_stderr_val') as string
+            return { output: out || '(no output)', error: err || null }
+        } catch (e) {
+            return { output: '', error: String(e) }
+        }
+    })()
+    return Promise.race([execution, timeout])
 }
 
 // ── HTML preview ─────────────────────────────────────────────────────────────
@@ -187,7 +236,7 @@ export function CodePlayground({ initialCode, language }: CodePlaygroundProps) {
             if (lang === 'python') {
                 result = await runPython(code)
             } else if (lang === 'javascript' || lang === 'typescript') {
-                result = runJavaScript(code)
+                result = await runJavaScript(code)
             } else {
                 result = { output: '', error: null } // HTML handled via preview
             }
