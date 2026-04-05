@@ -145,13 +145,16 @@ class RuntimeApiMixin:
         if str(session["user_id"]) != turn.user_id:
             raise ValueError("User does not match the active session")
 
+        user_content = turn.message
+        if turn.input_mode == "quiz_ready":
+            user_content = user_content or "[Start quiz]"
         await self.store.append_event(
             {
                 "session_id": session_id,
                 "role": "user",
                 "agent": session["active_agent"],
                 "event_type": "user_message",
-                "content": turn.message,
+                "content": user_content,
                 "payload": {
                     "message": turn.message,
                     "input_mode": turn.input_mode,

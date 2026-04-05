@@ -59,6 +59,8 @@ __pycache__/
 *.pyo
 *.pyd
 venv/
+# Local virtualenvs (e.g. .venv, .venv312) — not application code
+.venv*/
 *.egg-info/
 
 # Backend - Generated files

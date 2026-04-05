@@ -124,7 +124,7 @@ function inputPlaceholder(session: AgentSessionResponse | null, hasPendingQuiz: 
     if (!session) return 'Enter your career goal to get started…'
     if (hasPendingQuiz) return 'Answer the quiz above first…'
     if (session.status === 'awaiting_start_mode') return 'Choose how you want to begin…'
-    if (session.status === 'awaiting_topic_followup') return "Ask a follow-up or type 'ready' to continue…"
+    if (session.status === 'awaiting_topic_followup') return 'Ask a follow-up, or scroll down and tap Start quiz when ready…'
     if (session.status.includes('quiz')) return 'Answer the quiz prompt…'
     return 'Message your AI tutor…'
 }
@@ -136,6 +136,7 @@ function eventToTimelineMessage(event: AgentEvent): TimelineMessage | null {
     if (event.role === 'user' && event.payload?.input_mode === 'start_mode') return null
     if (event.role === 'user' && event.payload?.input_mode === 'multiple_choice') return null
     if (event.role === 'user' && event.payload?.input_mode === 'focus_confirm') return null
+    if (event.role === 'user' && event.payload?.input_mode === 'quiz_ready') return null
 
     const content =
         event.content ||
@@ -231,6 +232,19 @@ export default function ChatPage() {
     const isFocusConfirm = session?.status === 'awaiting_focus_confirm'
     const { label: statusText, color: statusColor } = statusLabel(session?.status || 'idle', busy)
 
+    const awaitingQuizConsent = Boolean(
+        (session?.state?.conversation_state as { awaiting_quiz_consent?: boolean } | undefined)?.awaiting_quiz_consent
+    )
+    const showQuizReadyButton = Boolean(
+        session &&
+            !pendingQuestion &&
+            !isStartModeOverlayOpen &&
+            !isFocusConfirm &&
+            ((session.status === 'awaiting_topic_followup' && awaitingQuizConsent) || session.status === 'reviewing_domain')
+    )
+    const quizReadyButtonLabel =
+        session?.status === 'reviewing_domain' ? 'Start module quiz' : 'Start task quiz'
+
     useEffect(() => {
         if (user?.id) {
             const fetchProfile = async () => {
@@ -307,7 +321,7 @@ export default function ChatPage() {
     useEffect(() => {
         if (!session) return
         if (session.status !== 'awaiting_focus_confirm') return
-        const focus = session.state?.focus_reveal
+        const focus = session.state?.focus_reveal as any
         if (!focus) return
         shouldRevealNextTaskRef.current = false
         setTaskReveal({
@@ -430,7 +444,9 @@ export default function ChatPage() {
         setSession(syncedSession ? hydrateSession(syncedSession) : data)
         setSelectedProjectId(data.project_id || selectedProjectId)
         if (shouldAppendAssistantTimelineMessage(data)) {
-            streamAssistantMessage(data.message)
+            const text =
+                typeof data.message === 'string' ? data.message : String(data.message ?? '')
+            streamAssistantMessage(text)
         }
         await refreshProjects(data.project_id || selectedProjectId || undefined)
         setBusy(false)
@@ -537,6 +553,13 @@ export default function ChatPage() {
         setTaskReveal(null)
         if (!session || !user?.id || busy) return
         await continueSession({ user_id: user.id, message: 'Get started', input_mode: 'focus_confirm' })
+    }
+
+    async function handleQuizReadyFromButton() {
+        if (!session || !user?.id || busy || pendingQuestion) return
+        // Use plain text + `ready` so older API builds (without `quiz_ready` input_mode) still work;
+        // orchestrator treats this like typing "ready" for topic follow-up and domain review.
+        await continueSession({ user_id: user.id, message: 'ready', input_mode: 'text' })
     }
 
     function dismissQuizOverlay() { if (!pendingQuizKey || busy || quizSubmitting) return; setDismissedQuizKey(pendingQuizKey) }
@@ -707,7 +730,7 @@ export default function ChatPage() {
                 </header>
 
                 {/* Messages area */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto min-h-0">
                     <RoadmapCreationCanvas visible={isRoadmapLoading} ambition={roadmapCreationQuery} />
 
                     {messages.length === 0 ? (
@@ -787,6 +810,32 @@ export default function ChatPage() {
                                                 />
                                             ))}
                                         </div>
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {showQuizReadyButton && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="relative flex gap-3 flex-row"
+                                >
+                                    <div className="absolute top-0 -left-10 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-sm bg-gradient-to-br from-blue-500 to-purple-500">
+                                        <Bot className="w-3.5 h-3.5" />
+                                    </div>
+                                    <div className="w-full rounded-2xl px-4 py-3 text-neutral-900 dark:text-white">
+                                        <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
+                                            When you are ready, start the quiz from here. New messages will appear above; scroll up anytime for follow-ups.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleQuizReadyFromButton()}
+                                            disabled={busy}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-sm py-2.5 px-4 transition-colors"
+                                        >
+                                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                                            {quizReadyButtonLabel}
+                                        </button>
                                     </div>
                                 </motion.div>
                             )}
@@ -875,7 +924,9 @@ export default function ChatPage() {
                         className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-xl border border-red-200 dark:border-red-500/30 bg-white dark:bg-neutral-900 p-4 shadow-xl"
                     >
                         <p className="text-sm font-semibold text-red-600 dark:text-red-400">Error</p>
-                        <p className="mt-0.5 text-xs text-neutral-600 dark:text-neutral-400">{error}</p>
+                        <p className="mt-0.5 text-xs text-neutral-600 dark:text-neutral-400">
+                            {typeof error === 'string' ? error : 'Something went wrong. Please try again.'}
+                        </p>
                         <button onClick={() => setError(null)} className="absolute top-3 right-3 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">
                             <X className="w-3.5 h-3.5" />
                         </button>

@@ -118,7 +118,16 @@ class BaseAgent:
         )
         scratchpad_text = json.dumps(scratchpad, indent=2, ensure_ascii=False)
         state_text = json.dumps(context.state, indent=2, ensure_ascii=False)
-        metadata_text = json.dumps(context.metadata, indent=2, ensure_ascii=False)
+        metadata_for_prompt = {
+            k: v
+            for k, v in (context.metadata or {}).items()
+            if not callable(v) and not (isinstance(v, dict) and any(callable(x) for x in v.values()))
+        }
+        if (context.metadata or {}).get("tool_host"):
+            metadata_for_prompt["tool_host"] = (
+                "injected at runtime (e.g. request_next_quiz when the session is awaiting topic-quiz consent)"
+            )
+        metadata_text = json.dumps(metadata_for_prompt, indent=2, ensure_ascii=False)
 
         user_prompt = (
             "Session context:\n"

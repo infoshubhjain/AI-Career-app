@@ -9,6 +9,36 @@ import { getAccessToken } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** FastAPI often returns `detail` as a string, or as an array of `{ loc, msg, type, ... }` objects. */
+function formatErrorDetail(detail: unknown): string {
+  if (detail == null) return "";
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "number" || typeof detail === "boolean") return String(detail);
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && "msg" in item) {
+        return String((item as { msg: unknown }).msg);
+      }
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return "";
+      }
+    });
+    const joined = parts.filter(Boolean).join(". ");
+    return joined || "Request validation failed";
+  }
+  if (typeof detail === "object" && detail !== null && "msg" in detail) {
+    return String((detail as { msg: unknown }).msg);
+  }
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return "Request failed";
+  }
+}
+
 interface ApiOptions extends RequestInit {
   requireAuth?: boolean;
 }
@@ -63,7 +93,10 @@ async function request<T>(
       
       try {
         const errorData = await response.json();
-        errorMessage = errorData.detail || errorData.message || errorMessage;
+        const fromDetail = formatErrorDetail(errorData.detail);
+        const fromMessage =
+          typeof errorData.message === "string" ? errorData.message : "";
+        errorMessage = fromDetail || fromMessage || errorMessage;
       } catch {
         // Response is not JSON, use status text
         errorMessage = response.statusText || errorMessage;

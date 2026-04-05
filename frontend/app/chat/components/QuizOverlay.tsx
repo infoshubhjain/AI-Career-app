@@ -129,7 +129,9 @@ export function QuizOverlay({
                                     ? 'Submitting your answer...'
                                     : nextReady
                                       ? 'Next question is ready.'
-                                      : error || 'Choose an answer, then submit when ready.'}
+                                      : typeof error === 'string' && error
+                                        ? error
+                                        : 'Choose an answer, then submit when ready.'}
                             </span>
                             <div className={`rounded-2xl p-[1px] ${canSubmit || nextReady ? 'bg-gradient-to-r from-blue-500/80 to-purple-500/80 shadow-[0_0_24px_rgba(59,130,246,0.35)]' : 'bg-[color:var(--line)]'}`}>
                                 <AnimatePresence mode="wait">

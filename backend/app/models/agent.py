@@ -39,7 +39,7 @@ class AgentSessionCreateRequest(BaseModel):
 class AgentTurnRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     message: str | None = None
-    input_mode: Literal["text", "multiple_choice", "start_mode", "focus_confirm"] = "text"
+    input_mode: Literal["text", "multiple_choice", "start_mode", "focus_confirm", "quiz_ready"] = "text"
     question_id: str | None = None
     selected_option_id: str | None = None
     selected_option_index: int | None = None
@@ -59,6 +59,9 @@ class AgentTurnRequest(BaseModel):
             return self
 
         if self.input_mode == "focus_confirm":
+            return self
+
+        if self.input_mode == "quiz_ready":
             return self
 
         if not (self.message or "").strip():

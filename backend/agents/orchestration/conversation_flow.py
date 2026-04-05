@@ -42,13 +42,55 @@ class ConversationFlowMixin:
         return normalized in READY_FOR_QUIZ_RESPONSES
 
     def _append_quiz_readiness_prompt(self, message: str) -> str:
-        prompt = "Are you ready to move on to the quiz? Reply `ready` when you are, or ask a follow-up question first."
+        prompt = (
+            "When you are ready for the quiz, scroll to the bottom of the chat and tap **Start quiz**. "
+            "You can also type `ready`. Ask follow-up questions here anytime."
+        )
         normalized = message.strip()
         if not normalized:
             return prompt
         if "ready" in normalized.lower() and "quiz" in normalized.lower():
             return normalized
         return f"{normalized}\n\n{prompt}"
+
+    async def _begin_topic_quiz_after_readiness(self, session: dict[str, Any]) -> AgentSessionResponse:
+        topic = self._current_topic(session["state"])
+        quiz_bundle = await self._create_quiz(
+            session=session,
+            state=session["state"],
+            scope="topic_quiz",
+            target_topic=topic,
+            target_skill=self._current_skill(session["state"], session["roadmap_json"]),
+            retry_reason="",
+            user_message="Generate the topic quiz after the learner indicated readiness.",
+        )
+        final_state = quiz_bundle["state"]
+        self._set_conversation_phase(final_state, phase="topic_quiz", topic_id=topic.get("id"), awaiting_quiz_consent=False)
+        updated = await self.store.update_session(
+            session["id"],
+            {"status": "awaiting_topic_quiz", "active_agent": "quiz_agent", "state": final_state},
+        )
+        return self._session_response(
+            updated,
+            message="Great. Here is the quiz for this topic.",
+            pending_questions=[quiz_bundle["question"]],
+        )
+
+    async def _begin_domain_quiz_after_review(self, session: dict[str, Any]) -> AgentSessionResponse:
+        review = session["state"].get("pending_domain_review") or {}
+        quiz_bundle = await self._create_quiz(
+            session=session,
+            state=session["state"],
+            scope="domain_quiz",
+            target_domain=review,
+            retry_reason="The learner previously missed this domain-level check.",
+            user_message="Generate a new domain quiz after review.",
+        )
+        updated = await self.store.update_session(
+            session["id"],
+            {"status": "awaiting_domain_quiz", "active_agent": "quiz_agent", "state": quiz_bundle["state"]},
+        )
+        return self._session_response(updated, message="Here is your next domain check.", pending_questions=[quiz_bundle["question"]])
 
     def _conversation_context_state(self, state: dict[str, Any], **extra: Any) -> dict[str, Any]:
         knowledge_state = state.get("knowledge_state") or {}
@@ -86,6 +128,26 @@ class ConversationFlowMixin:
         message = (turn.message or "").strip()
         status = session["status"]
 
+        if turn.input_mode == "quiz_ready":
+            if status == "awaiting_topic_followup":
+                conv = session["state"].get("conversation_state") or {}
+                topic = self._current_topic(session["state"])
+                current_tid = conv.get("current_topic_id")
+                if not conv.get("awaiting_quiz_consent"):
+                    return self._session_response(
+                        session,
+                        message="Keep exploring this topic in the chat. When you are ready, scroll down and tap **Start quiz**.",
+                    )
+                if current_tid and topic.get("id") and current_tid != topic.get("id"):
+                    return self._session_response(session, message="Topic state is out of sync. Try reloading the session.")
+                return await self._begin_topic_quiz_after_readiness(session)
+            if status == "reviewing_domain":
+                return await self._begin_domain_quiz_after_review(session)
+            return self._session_response(
+                session,
+                message="No quiz can be started from this screen right now. Continue the lesson or answer the active quiz above.",
+            )
+
         if status == "reviewing_topic":
             return await self._deliver_current_topic(session, intro="Reviewing the topic you missed before re-quizzing you.")
 
@@ -93,27 +155,7 @@ class ConversationFlowMixin:
             return await self._answer_followup(session, message)
 
         if status == "awaiting_topic_followup":
-            topic = self._current_topic(session["state"])
-            quiz_bundle = await self._create_quiz(
-                session=session,
-                state=session["state"],
-                scope="topic_quiz",
-                target_topic=topic,
-                target_skill=self._current_skill(session["state"], session["roadmap_json"]),
-                retry_reason="",
-                user_message="Generate the topic quiz after the learner said they are ready.",
-            )
-            final_state = quiz_bundle["state"]
-            self._set_conversation_phase(final_state, phase="topic_quiz", topic_id=topic.get("id"), awaiting_quiz_consent=False)
-            updated = await self.store.update_session(
-                session["id"],
-                {"status": "awaiting_topic_quiz", "active_agent": "quiz_agent", "state": final_state},
-            )
-            return self._session_response(
-                updated,
-                message="Great. Here is the quiz for this topic.",
-                pending_questions=[quiz_bundle["question"]],
-            )
+            return await self._begin_topic_quiz_after_readiness(session)
 
         if status == "awaiting_topic_quiz":
             return await self._grade_topic_quiz(session, turn)
@@ -130,22 +172,12 @@ class ConversationFlowMixin:
                     session["id"],
                     {"status": "reviewing_domain", "active_agent": "conversation_agent", "state": session["state"]},
                 )
-                return self._session_response(updated, message="Say `ready` when you want the next domain quiz question.")
+                return self._session_response(
+                    updated,
+                    message="When you are ready for the domain check, scroll down and tap **Start quiz**, or type `ready`.",
+                )
 
-            review = session["state"].get("pending_domain_review") or {}
-            quiz_bundle = await self._create_quiz(
-                session=session,
-                state=session["state"],
-                scope="domain_quiz",
-                target_domain=review,
-                retry_reason="The learner previously missed this domain-level check.",
-                user_message="Generate a new domain quiz after review.",
-            )
-            updated = await self.store.update_session(
-                session["id"],
-                {"status": "awaiting_domain_quiz", "active_agent": "quiz_agent", "state": quiz_bundle["state"]},
-            )
-            return self._session_response(updated, message="Here is your next domain check.", pending_questions=[quiz_bundle["question"]])
+            return await self._begin_domain_quiz_after_review(session)
 
         return await self._respond_from_terminal_state(session)
 

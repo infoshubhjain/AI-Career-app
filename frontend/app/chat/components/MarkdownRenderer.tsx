@@ -4,6 +4,9 @@ import { useState } from 'react'
 import Prism from 'prismjs'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-c'
@@ -82,15 +85,68 @@ function CodeBlock({
     )
 }
 
+function P5Simulation({ code }: { code: string }) {
+    const srcDoc = `
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+  <style> body { margin: 0; display: flex; justify-content: center; align-items: center; background: #0c0f14; overflow: hidden; } canvas { border-radius: 8px; max-width: 100%; height: auto; } </style>
+</head>
+<body>
+  <script>
+    try {
+      ${code}
+    } catch (e) {
+      console.error(e);
+      document.body.innerHTML = '<div style="color: red; font-family: sans-serif; padding: 20px;">Error running p5.js sketch. Check console or code.</div>';
+    }
+  </script>
+</body>
+</html>
+    `
+    return (
+        <div className="mt-4 flex flex-col overflow-hidden rounded-2xl border border-[color:var(--line)] bg-[#0c0f14]">
+            <div className="flex items-center justify-between border-b border-[color:var(--line)] px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-[color:var(--ink-faint)]">
+                <span>p5.js Simulation</span>
+            </div>
+            <div className="p-4 flex justify-center">
+                <iframe
+                    title="p5.js simulation"
+                    srcDoc={srcDoc}
+                    sandbox="allow-scripts"
+                    scrolling="no"
+                    className="h-[400px] w-full border-none bg-transparent"
+                />
+            </div>
+        </div>
+    )
+}
+
+function preprocessLaTeX(content: string) {
+    // Replace block math \[ ... \] with $$ ... $$
+    const blockMathRegex = /\\\[([\s\S]*?)\\\]/g
+    let processed = content.replace(blockMathRegex, (_, match) => `$$${match}$$`)
+
+    // Replace inline math \( ... \) with $ ... $
+    const inlineMathRegex = /\\\(([\s\S]*?)\\\)/g
+    processed = processed.replace(inlineMathRegex, (_, match) => `$${match}$`)
+
+    return processed
+}
+
 export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: MarkdownRendererProps) {
     const compact = variant === 'compact'
     const baseText = size === 'lg' ? 'text-lg' : size === 'sm' ? 'text-sm' : 'text-[15px]'
     const compactText = size === 'lg' ? 'text-base' : size === 'sm' ? 'text-[13px]' : 'text-sm'
     const paragraphText = compact ? compactText : baseText
+    const processedContent = preprocessLaTeX(content)
+
     return (
         <div className="markdown-body">
             <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex]}
                 components={{
                 h1: ({ children }) => (
                     <h1
@@ -211,13 +267,16 @@ export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: 
                         sh: 'bash',
                     }
                     let language = aliasMap[rawLanguage] ?? rawLanguage
+                    if (language === 'p5') {
+                        return <P5Simulation code={raw} />
+                    }
                     const grammar = Prism.languages[language] ?? Prism.languages.markup
                     const html = Prism.highlight(raw, grammar, language)
                     return <CodeBlock raw={raw} html={html} language={language} />
                 },
                 }}
             >
-                {content}
+                {processedContent}
             </ReactMarkdown>
         </div>
     )
