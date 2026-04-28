@@ -12,6 +12,7 @@
     "@ai-sdk/google": "^3.0.22",
     "@ai-sdk/openai": "^3.0.33",
     "@ai-sdk/react": "^3.0.102",
+    "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",

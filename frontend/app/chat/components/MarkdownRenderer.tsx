@@ -7,6 +7,9 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { CodePlayground } from './CodePlayground'
+
+const PLAYGROUND_LANGS = new Set(['javascript', 'typescript', 'python', 'html', 'js', 'ts', 'py'])
 
 import 'prismjs/components/prism-bash'
 import 'prismjs/components/prism-c'
@@ -136,6 +139,7 @@ function preprocessLaTeX(content: string) {
 }
 
 export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: MarkdownRendererProps) {
+    if (!content) return null
     const compact = variant === 'compact'
     const baseText = size === 'lg' ? 'text-lg' : size === 'sm' ? 'text-sm' : 'text-[15px]'
     const compactText = size === 'lg' ? 'text-base' : size === 'sm' ? 'text-[13px]' : 'text-sm'
@@ -269,6 +273,10 @@ export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: 
                     let language = aliasMap[rawLanguage] ?? rawLanguage
                     if (language === 'p5') {
                         return <P5Simulation code={raw} />
+                    }
+                    // For runnable languages, show the interactive playground
+                    if (PLAYGROUND_LANGS.has(rawLanguage) || PLAYGROUND_LANGS.has(language)) {
+                        return <CodePlayground initialCode={raw} language={language} />
                     }
                     const grammar = Prism.languages[language] ?? Prism.languages.markup
                     const html = Prism.highlight(raw, grammar, language)

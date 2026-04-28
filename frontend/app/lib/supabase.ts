@@ -10,21 +10,23 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file."
-  );
-}
+const isConfigured =
+  supabaseUrl &&
+  supabaseAnonKey &&
+  !supabaseUrl.includes('your_supabase') &&
+  !supabaseAnonKey.includes('your_supabase')
 
 /**
  * Singleton Supabase client instance.
  * Configured with automatic session refresh and persistence.
  */
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-});
+export const supabase: SupabaseClient = isConfigured
+  ? createClient(supabaseUrl!, supabaseAnonKey!, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : ({} as SupabaseClient)
 

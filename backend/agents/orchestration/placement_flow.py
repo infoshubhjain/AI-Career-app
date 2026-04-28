@@ -73,6 +73,7 @@ class PlacementFlowMixin:
         )
         state["active_quiz_id"] = None
         state["active_quiz_kind"] = None
+        state["last_quiz_correct"] = is_correct
         state["knowledge_state"]["current_probe"] = None
         placement_state["current_skill_attempts"] = int(placement_state.get("current_skill_attempts") or 0) + 1
         self._record_binary_placement_history(

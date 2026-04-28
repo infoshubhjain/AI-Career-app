@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { type User, type Session } from '@supabase/supabase-js'
 
@@ -66,7 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null)
     const [loading, setLoading] = useState(true)
     const [isDevUser, setIsDevUser] = useState(false)
-    const supabase = createClient()
+    const supabaseRef = useRef(createClient())
+    const supabase = supabaseRef.current
 
     useEffect(() => {
         const devModeActive = typeof window !== 'undefined' && sessionStorage.getItem(DEV_AUTH_STORAGE_KEY) === 'true'
@@ -109,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => {
             subscription.unsubscribe()
         }
-    }, [supabase])
+    }, [])
 
     const signOut = async () => {
         if (typeof window !== 'undefined') {
