@@ -467,6 +467,11 @@ export default function ChatPage() {
             lastTopicIndexRef.current = resolvedSession.state?.current_topic_index ?? null
             await refreshProjects(data.project_id || undefined)
             setBusy(false)
+        } catch (err) {
+            setError('Failed to start session')
+            setBusy(false)
+            setIsRoadmapLoading(false)
+            throw err
         } finally {
             sessionCreationInFlightRef.current = false
         }
@@ -477,6 +482,7 @@ export default function ChatPage() {
         setBusy(true); setError(null)
         shouldRevealNextTaskRef.current = true
         logPipeline('turn_send', { sessionId: session.session_id, status: session.status, payload })
+        try {
         const { data, error: requestError } = await sendAgentMessage(session.session_id, payload)
         if (requestError || !data) { setError(requestError || 'Failed to send message'); setBusy(false); return null }
         logPipeline('turn_response', data)
@@ -542,6 +548,11 @@ export default function ChatPage() {
         lastSkillIndexRef.current = nextSkillIdx
 
         return data
+        } catch (err) {
+            setError('An unexpected error occurred')
+            setBusy(false)
+            throw err
+        }
     }
 
     function streamAssistantMessage(content: string) {
