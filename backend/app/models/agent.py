@@ -14,6 +14,24 @@ class AgentAnswerOption(BaseModel):
     label: str
 
 
+class QuizOutcomeFeedback(BaseModel):
+    """Shown only in the quiz overlay (lesson quizzes); not duplicated in chat."""
+
+    is_correct: bool
+    explanation_markdown: str
+
+
+class DungeonTurnPayload(BaseModel):
+    """Structured dungeon beat; narration is also duplicated in session message for the transcript."""
+
+    narration: str
+    decision_state: Literal["continue", "success", "failure"]
+    success_condition: str | None = None
+    failure_condition: str | None = None
+    scenario_title: str | None = None
+    stakes_tier: int | None = None
+
+
 class AgentQuestion(BaseModel):
     id: str
     prompt: str
@@ -39,7 +57,16 @@ class AgentSessionCreateRequest(BaseModel):
 class AgentTurnRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     message: str | None = None
-    input_mode: Literal["text", "multiple_choice", "start_mode", "focus_confirm", "quiz_ready"] = "text"
+    input_mode: Literal[
+        "text",
+        "multiple_choice",
+        "start_mode",
+        "focus_confirm",
+        "quiz_ready",
+        "dungeon_start",
+        "dungeon_abort",
+        "dungeon_dismiss",
+    ] = "text"
     question_id: str | None = None
     selected_option_id: str | None = None
     selected_option_index: int | None = None
@@ -64,6 +91,9 @@ class AgentTurnRequest(BaseModel):
         if self.input_mode == "quiz_ready":
             return self
 
+        if self.input_mode in {"dungeon_start", "dungeon_abort", "dungeon_dismiss"}:
+            return self
+
         if not (self.message or "").strip():
             raise ValueError("message is required for text turns")
         return self
@@ -79,6 +109,8 @@ class AgentSessionResponse(BaseModel):
     roadmap: RoadmapResponse | None = None
     pending_questions: list[AgentQuestion] = Field(default_factory=list)
     state: dict[str, Any] = Field(default_factory=dict)
+    quiz_outcome_feedback: QuizOutcomeFeedback | None = None
+    dungeon_turn: DungeonTurnPayload | None = None
 
 
 class AgentSessionStateResponse(BaseModel):

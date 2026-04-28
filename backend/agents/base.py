@@ -104,7 +104,6 @@ class BaseAgent:
         )
 
     def _build_messages(self, *, context: AgentContext, scratchpad: list[dict[str, Any]]) -> list[dict[str, str]]:
-        reading_level = self._reading_level(context.state)
         tool_block = json.dumps(
             [
                 {
@@ -142,7 +141,6 @@ class BaseAgent:
 
         system_prompt = (
             f"{self.instruction}\n\n"
-            f"Respond based on the user's reading level is {reading_level}.\n\n"
             "All user-facing content must be valid Markdown. Use headings, lists, tables, blockquotes, and fenced code blocks when helpful.\n\n"
             "You are operating in a strict ReAct runtime.\n"
             "Available tools:\n"
@@ -165,14 +163,3 @@ class BaseAgent:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-
-    def _reading_level(self, state: dict[str, Any]) -> str:
-        learner_profile = state.get("learner_profile") or {}
-        if learner_profile.get("reading_level"):
-            return str(learner_profile["reading_level"])
-
-        for answer in state.get("profile_answers") or []:
-            if answer.get("id") == "reading_level" and answer.get("answer"):
-                return str(answer["answer"])
-
-        return "high school"

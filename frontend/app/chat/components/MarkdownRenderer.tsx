@@ -244,8 +244,16 @@ export function MarkdownRenderer({ content, variant = 'default', size = 'md' }: 
                     const raw = String(children ?? '').replace(/\n$/, '')
                     const isInline = !className
                     if (isInline) {
+                        const short = raw.length <= 30
+                        const highlight =
+                            'rounded border border-black/[0.08] bg-black/[0.06] px-1 py-0.5 font-mono text-[0.92em] font-medium text-[color:var(--ink-soft)] dark:border-white/[0.12] dark:bg-white/[0.08] dark:text-[color:var(--ink)]'
+                        if (short) {
+                            return <code className={`${highlight} inline align-baseline`}>{raw}</code>
+                        }
                         return (
-                            <code className="rounded-md border border-[color:var(--line)] bg-[color:var(--surface-2)] px-1.5 py-0.5 text-xs font-semibold text-[color:var(--accent-2)]">
+                            <code
+                                className={`${highlight} my-0.5 inline-block max-w-full align-baseline break-words whitespace-pre-wrap`}
+                            >
                                 {raw}
                             </code>
                         )

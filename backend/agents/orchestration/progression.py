@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.agent import AgentSessionResponse
+from app.models.agent import AgentSessionResponse, QuizOutcomeFeedback
 from app.models.roadmap import RoadmapResponse
 
 
@@ -17,7 +17,15 @@ class ProgressionMixin:
                 "agent": response.active_agent,
                 "event_type": "assistant_message",
                 "content": response.message,
-                "payload": {"status": response.status, "pending_questions": [question.model_dump() for question in response.pending_questions]},
+                "payload": {
+                    "status": response.status,
+                    "pending_questions": [question.model_dump() for question in response.pending_questions],
+                    "quiz_outcome_feedback": response.quiz_outcome_feedback.model_dump()
+                    if response.quiz_outcome_feedback
+                    else None,
+                    "dungeon_turn": response.dungeon_turn.model_dump() if response.dungeon_turn else None,
+                    "dungeon_transcript": response.status == "awaiting_topic_dungeon",
+                },
             }
         )
         await self.store.update_project(
@@ -45,6 +53,7 @@ class ProgressionMixin:
         state: dict[str, Any],
         *,
         intro: str | None = None,
+        quiz_outcome_feedback: QuizOutcomeFeedback | None = None,
     ) -> AgentSessionResponse:
         previous_domain_index = state["roadmap_progress"]["domain_index"]
         roadmap = RoadmapResponse(**session["roadmap_json"])
@@ -62,6 +71,7 @@ class ProgressionMixin:
             return self._session_response(
                 updated,
                 message=f"{prefix}You have completed the roadmap. Placeholder: capstone evaluation, domain-wide assessment, and endgame flow will go here.".strip(),
+                quiz_outcome_feedback=quiz_outcome_feedback,
             )
 
         if progress["domain_index"] != previous_domain_index:
@@ -87,6 +97,7 @@ class ProgressionMixin:
                 updated,
                 message=f"{prefix}You completed the domain '{completed_domain.title}'. Before moving on, take this short domain assessment.".strip(),
                 pending_questions=[quiz_bundle["question"]],
+                quiz_outcome_feedback=quiz_outcome_feedback,
             )
 
         next_skill = self._current_skill(state, session["roadmap_json"])
@@ -95,6 +106,7 @@ class ProgressionMixin:
                 session=session,
                 state=state,
                 intro=f"{prefix}Skill complete. Moving to the next skill: {next_skill['title']}.",
+                quiz_outcome_feedback=quiz_outcome_feedback,
             )
 
         state["knowledge_state"]["learning_frontier"] = None
@@ -120,6 +132,7 @@ class ProgressionMixin:
             updated,
             message=f"{prefix}Skill complete. Next, a quick placement check will confirm the right starting point for {next_skill['title']}.".strip(),
             pending_questions=[quiz_bundle["question"]],
+            quiz_outcome_feedback=quiz_outcome_feedback,
         )
 
     async def _start_guided_skill(
@@ -128,6 +141,7 @@ class ProgressionMixin:
         session: dict[str, Any],
         state: dict[str, Any],
         intro: str | None = None,
+        quiz_outcome_feedback: QuizOutcomeFeedback | None = None,
     ) -> Any:
         skill = self._current_skill(state, session["roadmap_json"])
         self._set_progress_from_skill(state, skill, session["roadmap_json"])
@@ -144,4 +158,4 @@ class ProgressionMixin:
             session["id"],
             {"status": "reviewing_topic", "active_agent": "conversation_agent", "state": state},
         )
-        return await self._deliver_current_topic(updated, intro=intro)
+        return await self._deliver_current_topic(updated, intro=intro, quiz_outcome_feedback=quiz_outcome_feedback)

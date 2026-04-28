@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.agent import AgentEventResponse, AgentProjectSummary, AgentSessionResponse, AgentSessionStateResponse
+from app.models.agent import (
+    AgentEventResponse,
+    AgentProjectSummary,
+    AgentSessionResponse,
+    AgentSessionStateResponse,
+    DungeonTurnPayload,
+    QuizOutcomeFeedback,
+)
 
 
 class PlacementFlowMixin:
@@ -333,7 +340,15 @@ class PlacementFlowMixin:
                 merged[key] = value
         return merged
 
-    def _session_response(self, session: dict[str, Any], *, message: str, pending_questions: list[Any] | None = None) -> AgentSessionResponse:
+    def _session_response(
+        self,
+        session: dict[str, Any],
+        *,
+        message: str,
+        pending_questions: list[Any] | None = None,
+        quiz_outcome_feedback: QuizOutcomeFeedback | None = None,
+        dungeon_turn: DungeonTurnPayload | None = None,
+    ) -> AgentSessionResponse:
         return AgentSessionResponse(
             session_id=str(session["id"]),
             project_id=str(session["project_id"]),
@@ -344,6 +359,8 @@ class PlacementFlowMixin:
             roadmap=self._roadmap_response(session),
             pending_questions=pending_questions or [],
             state=session["state"],
+            quiz_outcome_feedback=quiz_outcome_feedback,
+            dungeon_turn=dungeon_turn,
         )
 
     def _session_state_response(self, session: dict[str, Any], *, pending_questions: list[Any] | None = None) -> AgentSessionStateResponse:

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.agent import AgentAnswerOption, AgentQuestion
+from app.core.logging import AgentLogger
+from app.models.agent import AgentAnswerOption, AgentQuestion, QuizOutcomeFeedback
 from agents.runtime.types import AgentContext
 
 IDONT_KNOW_OPTION_ID = "IDK"
@@ -321,3 +322,31 @@ class QuizRuntimeMixin:
     def _slugify(self, value: str) -> str:
         pieces = [part for part in "".join(ch.lower() if ch.isalnum() else "-" for ch in value).split("-") if part]
         return "-".join(pieces[:6]) or "concept"
+
+    async def _lesson_quiz_outcome_feedback(
+        self,
+        *,
+        session: dict[str, Any],
+        quiz: dict[str, Any],
+        selected_index: int,
+        is_correct: bool,
+    ) -> QuizOutcomeFeedback | None:
+        """LLM explanation for topic/skill/domain quizzes only (not placement/profile)."""
+        kind = str(quiz.get("question_kind") or "")
+        if kind not in {"topic_quiz", "skill_quiz", "domain_quiz"}:
+            return None
+        try:
+            markdown = await self.quiz_agent.explain_outcome(
+                quiz=quiz,
+                selected_index=selected_index,
+                is_correct=is_correct,
+            )
+        except Exception as exc:  # noqa: BLE001
+            AgentLogger.error(
+                event="quiz_outcome_explain_failed",
+                component="quiz_runtime",
+                session_id=str(session.get("id")),
+                error=str(exc),
+            )
+            markdown = self.quiz_agent._fallback_outcome_explanation(quiz, is_correct)
+        return QuizOutcomeFeedback(is_correct=is_correct, explanation_markdown=markdown)

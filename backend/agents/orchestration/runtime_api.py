@@ -148,6 +148,12 @@ class RuntimeApiMixin:
         user_content = turn.message
         if turn.input_mode == "quiz_ready":
             user_content = user_content or "[Start quiz]"
+        if turn.input_mode == "dungeon_start":
+            user_content = user_content or "[Dungeon]"
+        if turn.input_mode == "dungeon_abort":
+            user_content = user_content or "[Leave dungeon]"
+        if turn.input_mode == "dungeon_dismiss":
+            user_content = user_content or "[Dungeon complete]"
         await self.store.append_event(
             {
                 "session_id": session_id,
@@ -161,6 +167,7 @@ class RuntimeApiMixin:
                     "question_id": turn.question_id,
                     "selected_option_id": turn.selected_option_id,
                     "selected_option_index": turn.selected_option_index,
+                    "dungeon_transcript": session["status"] == "awaiting_topic_dungeon" and turn.input_mode == "text",
                 },
             }
         )
@@ -174,7 +181,15 @@ class RuntimeApiMixin:
             response = await self._handle_knowledge_turn(session, turn)
         elif status == "awaiting_focus_confirm":
             response = await self._handle_focus_confirm(session)
-        elif status in {"awaiting_topic_followup", "awaiting_topic_quiz", "awaiting_skill_quiz", "reviewing_topic", "awaiting_domain_quiz", "reviewing_domain"}:
+        elif status in {
+            "awaiting_topic_followup",
+            "awaiting_topic_quiz",
+            "awaiting_topic_dungeon",
+            "awaiting_skill_quiz",
+            "reviewing_topic",
+            "awaiting_domain_quiz",
+            "reviewing_domain",
+        }:
             response = await self._handle_conversation_turn(session, turn)
         else:
             response = await self._respond_from_terminal_state(session)
@@ -197,13 +212,13 @@ class RuntimeApiMixin:
             return await self._start_guided_skill(
                 session=session,
                 state=state,
-                intro=f"Saved your reading level as {answer}. Starting from the beginning of your roadmap.",
+                intro=f"Saved your profile. Starting from the beginning of your roadmap.",
             )
 
         return await self._start_placement_flow(
             session=session,
             state=state,
-            intro=f"Saved your reading level as {answer}. I’ll use that to tune explanations and quizzes.",
+            intro=f"Saved your profile. Starting placement calibration.",
         )
 
     async def _handle_start_mode(self, session: dict[str, Any], turn: AgentTurnRequest) -> AgentSessionResponse:
@@ -220,7 +235,7 @@ class RuntimeApiMixin:
                 return await self._start_guided_skill(
                     session=session,
                     state=state,
-                    intro=f"I’ll reuse your saved reading level of {reading_level}. Starting from the beginning of your roadmap.",
+                    intro=f"Using your saved profile. Starting from the beginning of your roadmap.",
                 )
             updated = await self.store.update_session(
                 session["id"],
@@ -228,7 +243,7 @@ class RuntimeApiMixin:
             )
             return self._session_response(
                 updated,
-                message="You chose to start from the beginning. First, choose your reading level so I can tailor the lecture style.",
+                message="You chose to start from the beginning. First, answer a quick profile question about reading comfort with technical material.",
                 pending_questions=[self._reading_level_question()],
             )
 
@@ -236,7 +251,7 @@ class RuntimeApiMixin:
             return await self._start_placement_flow(
                 session=session,
                 state=state,
-                intro=f"I’ll reuse your saved reading level of {reading_level} and start calibrating immediately.",
+                intro="Using your saved profile. Starting placement calibration.",
             )
 
         updated = await self.store.update_session(
@@ -245,7 +260,7 @@ class RuntimeApiMixin:
         )
         return self._session_response(
             updated,
-            message="You chose the placement test. First, choose your reading level so I can tailor explanations and quizzes.",
+            message="You chose the placement test. First, answer a quick profile question about reading comfort with technical material.",
             pending_questions=[self._reading_level_question()],
         )
 

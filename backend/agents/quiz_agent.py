@@ -1,11 +1,11 @@
-"""Agent responsible for generating four-option multiple-choice questions."""
+"""Multiple-choice quiz generation and post-answer explanations (direct LLM calls, not ReAct)."""
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any
 
-from agents.base import BaseAgent
+from agents.runtime.providers import ProviderRouter
 from agents.runtime.types import AgentContext
 
 QUIZ_PROMPT = """
@@ -28,7 +28,7 @@ Rules:
 - Exactly 4 answer options.
 - Exactly 1 correct answer.
 - Keep distractors plausible.
-- Match the user's reading level.
+- Use clear, plain language in the question and options (define a term briefly only if the question depends on it).
 - For retry questions, target the missed concept without repeating the previous wording.
 - Avoid repeating any concept or wording seen in recent placement history.
 - Avoid multi-part questions.
@@ -62,10 +62,31 @@ Rules:
 - Keep options short; inline code is ok.
 """.strip()
 
+OUTCOME_EXPLANATION_PROMPT = """
+You explain quiz results to a learner after they submit an answer.
+This is for lesson quizzes (topic / skill / domain checks), not placement diagnostics.
 
-class QuizAgent(BaseAgent):
+Return JSON with exactly this shape:
+{ "explanation": "markdown string" }
+
+Rules:
+- Open with one clear sentence stating whether their answer was correct or incorrect.
+- Explain why the keyed correct answer is right (use the reference explanation as ground truth; expand if needed).
+- If they were wrong, briefly contrast their choice with the correct idea—no shaming.
+- Use clear, direct wording (short sentences when possible).
+- Stay under ~180 words unless the concept truly needs more.
+- Use Markdown when it helps (short lists, `inline code` for technical terms).
+- Do not repeat the full question stem verbatim.
+""".strip()
+
+
+class QuizAgent:
+    """Generates quizzes and outcome copy via structured JSON LLM calls only."""
+
+    name = "quiz_agent"
+
     def __init__(self) -> None:
-        super().__init__(name="quiz_agent", instruction="Generate multiple-choice quizzes.", tools=[])
+        self.llm = ProviderRouter()
 
     async def generate(self, context: AgentContext) -> dict[str, Any]:
         scope = str(context.state.get("quiz_scope") or "knowledge_probe")
@@ -78,7 +99,6 @@ class QuizAgent(BaseAgent):
         placement_history = list(context.state.get("placement_history") or [])[-4:]
         recent_question_fingerprints = list(context.state.get("recent_question_fingerprints") or [])[-6:]
         placement_state = context.state.get("placement_state") or {}
-        reading_level = self._reading_level(context.state)
 
         placement_mode = str(context.state.get("placement_mode") or "").strip()
         prior_question = context.state.get("prior_question") or {}
@@ -89,7 +109,6 @@ class QuizAgent(BaseAgent):
                     "role": "user",
                     "content": (
                         "Generate the next placement question.\n\n"
-                        f"Reading level: {reading_level}\n\n"
                         f"Target skill: {target_skill}\n\n"
                         f"Prior question: {prior_question}\n\n"
                         f"Latest orchestration message: {context.user_message}"
@@ -104,7 +123,6 @@ class QuizAgent(BaseAgent):
                     "content": (
                         "Generate the next quiz question.\n\n"
                         f"Quiz scope: {scope}\n\n"
-                        f"Reading level: {reading_level}\n\n"
                         f"Target skill: {target_skill}\n\n"
                         f"Target topic: {target_topic}\n\n"
                         f"Target domain: {target_domain}\n\n"
@@ -161,6 +179,45 @@ class QuizAgent(BaseAgent):
             "question_fingerprint": question_fingerprint,
         }
 
+    async def explain_outcome(
+        self,
+        *,
+        quiz: dict[str, Any],
+        selected_index: int,
+        is_correct: bool,
+    ) -> str:
+        """LLM copy for the quiz overlay only (not chat). Runs right after correctness is known."""
+        options = list(quiz.get("options") or [])
+        labels = [str((opt or {}).get("label") or "") for opt in options]
+        correct_idx = int(quiz.get("correct_option_index") or 0)
+        correct_idx = max(0, min(correct_idx, len(labels) - 1 if labels else 0))
+        selected_idx = max(0, min(selected_index, len(labels) - 1 if labels else 0))
+        reference = str(quiz.get("explanation") or "").strip()
+        kind = str(quiz.get("question_kind") or "")
+
+        payload = (
+            f"Question kind: {kind}\n"
+            f"Outcome: {'CORRECT' if is_correct else 'INCORRECT'}\n\n"
+            f"Question prompt:\n{quiz.get('prompt') or ''}\n\n"
+            f"Options (index: label):\n"
+            + "\n".join(f"  {i}: {labels[i]}" for i in range(len(labels)))
+            + f"\n\nLearner chose index {selected_idx}: {labels[selected_idx] if labels else ''}\n"
+            f"Correct index {correct_idx}: {labels[correct_idx] if labels else ''}\n\n"
+            f"Author reference explanation (ground truth):\n{reference or '(none)'}\n"
+        )
+        messages = [
+            {"role": "system", "content": OUTCOME_EXPLANATION_PROMPT},
+            {"role": "user", "content": payload},
+        ]
+        response = await self.llm.complete_json(messages, max_tokens=700, agent_name=f"{self.name}_outcome")
+        text = str(response.get("explanation") or "").strip()
+        return text or self._fallback_outcome_explanation(quiz, is_correct)
+
+    def _fallback_outcome_explanation(self, quiz: dict[str, Any], is_correct: bool) -> str:
+        ref = str(quiz.get("explanation") or "").strip()
+        lead = "**That's correct.**" if is_correct else "**Not quite.**"
+        return f"{lead}\n\n{ref}" if ref else lead
+
     def _normalize_options(self, raw_options: Any) -> list[str]:
         options = [str(item).strip() for item in list(raw_options or []) if str(item).strip()]
         if len(options) == 4:
@@ -188,15 +245,6 @@ class QuizAgent(BaseAgent):
             return f"Which option best summarizes the most important pattern from {title}?"
         title = target_skill.get("title") or "this skill"
         return f"Which option best shows working knowledge of {title}?"
-
-    def _reading_level(self, state: dict[str, Any]) -> str:
-        learner_profile = state.get("learner_profile") or {}
-        if learner_profile.get("reading_level"):
-            return str(learner_profile["reading_level"])
-        for answer in state.get("profile_answers") or []:
-            if answer.get("id") == "reading_level" and answer.get("answer"):
-                return str(answer["answer"])
-        return "high school"
 
     def _slugify(self, value: str) -> str:
         pieces = [part for part in "".join(ch.lower() if ch.isalnum() else "-" for ch in value).split("-") if part]

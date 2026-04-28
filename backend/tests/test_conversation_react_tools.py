@@ -87,3 +87,18 @@ def test_base_agent_metadata_prompt_omits_callable_tool_host() -> None:
 def test_agent_turn_request_quiz_ready_allows_empty_message() -> None:
     turn = AgentTurnRequest(user_id="user-1", message=None, input_mode="quiz_ready")
     assert turn.input_mode == "quiz_ready"
+
+
+def test_agent_turn_request_dungeon_start_allows_empty_message() -> None:
+    turn = AgentTurnRequest(user_id="user-1", message=None, input_mode="dungeon_start")
+    assert turn.input_mode == "dungeon_start"
+
+
+def test_agent_turn_request_dungeon_abort_allows_empty_message() -> None:
+    turn = AgentTurnRequest(user_id="user-1", message="", input_mode="dungeon_abort")
+    assert turn.input_mode == "dungeon_abort"
+
+
+def test_agent_turn_request_dungeon_dismiss_allows_empty_message() -> None:
+    turn = AgentTurnRequest(user_id="user-1", message=None, input_mode="dungeon_dismiss")
+    assert turn.input_mode == "dungeon_dismiss"

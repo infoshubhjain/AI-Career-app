@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.agent import AgentSessionResponse, AgentTurnRequest
+from app.models.agent import AgentSessionResponse, AgentTurnRequest, QuizOutcomeFeedback
 from agents.runtime.types import AgentContext
 
 
@@ -42,9 +42,10 @@ class ConversationFlowMixin:
         return normalized in READY_FOR_QUIZ_RESPONSES
 
     def _append_quiz_readiness_prompt(self, message: str) -> str:
+        """Append only after the initial lecture; follow-ups use the model reply as-is."""
         prompt = (
-            "When you are ready for the quiz, scroll to the bottom of the chat and tap **Start quiz**. "
-            "You can also type `ready`. Ask follow-up questions here anytime."
+            "When you are ready, use **Start quiz** at the bottom of the chat or type `ready` here. "
+            "You can keep asking questions in this thread first."
         )
         normalized = message.strip()
         if not normalized:
@@ -128,7 +129,19 @@ class ConversationFlowMixin:
         message = (turn.message or "").strip()
         status = session["status"]
 
+        if turn.input_mode == "dungeon_start":
+            return await self._handle_dungeon_start(session, turn)
+        if turn.input_mode == "dungeon_dismiss":
+            return await self._handle_dungeon_dismiss(session, turn)
+        if turn.input_mode == "dungeon_abort":
+            return await self._handle_dungeon_abort(session, turn)
+
         if turn.input_mode == "quiz_ready":
+            if status == "awaiting_topic_dungeon":
+                return self._session_response(
+                    session,
+                    message="Finish or leave the Dungeon first. You can start the quiz once this scene ends.",
+                )
             if status == "awaiting_topic_followup":
                 conv = session["state"].get("conversation_state") or {}
                 topic = self._current_topic(session["state"])
@@ -147,6 +160,9 @@ class ConversationFlowMixin:
                 session,
                 message="No quiz can be started from this screen right now. Continue the lesson or answer the active quiz above.",
             )
+
+        if status == "awaiting_topic_dungeon":
+            return await self._handle_dungeon_text_turn(session, turn)
 
         if status == "reviewing_topic":
             return await self._deliver_current_topic(session, intro="Reviewing the topic you missed before re-quizzing you.")
@@ -198,12 +214,19 @@ class ConversationFlowMixin:
             session["id"],
             {"status": "awaiting_topic_followup", "active_agent": "conversation_agent", "state": updated_state},
         )
-        return self._session_response(updated, message=self._append_quiz_readiness_prompt(decision.message))
+        # Do not append quiz UI copy on follow-ups—the chat UI already surfaces Start quiz; let the model answer fully.
+        return self._session_response(updated, message=(decision.message or "").strip())
 
     async def _grade_topic_quiz(self, session: dict[str, Any], turn: AgentTurnRequest) -> AgentSessionResponse:
         state = session["state"]
         quiz, selected_index = await self._resolve_quiz_submission(session, turn)
         is_correct = selected_index == int(quiz["correct_option_index"])
+        feedback = await self._lesson_quiz_outcome_feedback(
+            session=session,
+            quiz=quiz,
+            selected_index=selected_index,
+            is_correct=is_correct,
+        )
         bkt_result = (
             await self.knowledge_store.apply_quiz_observation(
                 user_id=str(session["user_id"]),
@@ -261,7 +284,8 @@ class ConversationFlowMixin:
             )
             return await self._deliver_current_topic(
                 updated,
-                intro=f"Not quite. {quiz['explanation']}\n\nI’m sending you back through a focused review before we try a new question.",
+                intro="Not quite—let’s review this topic again before the next quiz question.",
+                quiz_outcome_feedback=feedback,
             )
 
         state["current_topic_index"] += 1
@@ -271,15 +295,27 @@ class ConversationFlowMixin:
                 session["id"],
                 {"status": "reviewing_topic", "active_agent": "conversation_agent", "state": state},
             )
-            return await self._deliver_current_topic(updated, intro=f"Correct. {quiz['explanation']}\n\nMoving to the next concept.")
+            return await self._deliver_current_topic(
+                updated,
+                intro="Great—moving to the next concept.",
+                quiz_outcome_feedback=feedback,
+            )
 
         return await self._start_skill_quiz(
             session=session,
             state=state,
-            intro=f"Correct. {quiz['explanation']}\n\nYou finished the lesson topics for this skill. Next is a short skill check.",
+            intro="You’ve finished the lesson topics for this skill. Next is a short skill check.",
+            quiz_outcome_feedback=feedback,
         )
 
-    async def _start_skill_quiz(self, *, session: dict[str, Any], state: dict[str, Any], intro: str | None = None) -> AgentSessionResponse:
+    async def _start_skill_quiz(
+        self,
+        *,
+        session: dict[str, Any],
+        state: dict[str, Any],
+        intro: str | None = None,
+        quiz_outcome_feedback: QuizOutcomeFeedback | None = None,
+    ) -> AgentSessionResponse:
         skill = self._current_skill(state, session["roadmap_json"])
         total_questions = min(max(len(state.get("lesson_plan") or []), 3), 5)
         skill_quiz_state = {
@@ -309,6 +345,7 @@ class ConversationFlowMixin:
             updated,
             message=f"{prefix}Skill check question 1 of {total_questions}.",
             pending_questions=[quiz_bundle["question"]],
+            quiz_outcome_feedback=quiz_outcome_feedback,
         )
 
     async def _grade_skill_quiz(self, session: dict[str, Any], turn: AgentTurnRequest) -> AgentSessionResponse:
@@ -316,6 +353,12 @@ class ConversationFlowMixin:
         skill = self._current_skill(state, session["roadmap_json"])
         quiz, selected_index = await self._resolve_quiz_submission(session, turn)
         is_correct = selected_index == int(quiz["correct_option_index"])
+        feedback = await self._lesson_quiz_outcome_feedback(
+            session=session,
+            quiz=quiz,
+            selected_index=selected_index,
+            is_correct=is_correct,
+        )
         bkt_result = (
             await self.knowledge_store.apply_quiz_observation(
                 user_id=str(session["user_id"]),
@@ -396,8 +439,9 @@ class ConversationFlowMixin:
             lead = "Correct." if is_correct else "Not quite."
             return self._session_response(
                 updated,
-                message=f"{lead} {quiz['explanation']}\n\nSkill check question {next_number} of {total_questions}.",
+                message=f"{lead} Skill check question {next_number} of {total_questions}.",
                 pending_questions=[quiz_bundle["question"]],
+                quiz_outcome_feedback=feedback,
             )
 
         await self._compact_memory(session, state)
@@ -406,12 +450,19 @@ class ConversationFlowMixin:
             session,
             state,
             intro=f"Skill check complete for {skill['title']}: {correct_answers}/{total_questions} correct.",
+            quiz_outcome_feedback=feedback,
         )
 
     async def _grade_domain_quiz(self, session: dict[str, Any], turn: AgentTurnRequest) -> AgentSessionResponse:
         state = session["state"]
         quiz, selected_index = await self._resolve_quiz_submission(session, turn)
         is_correct = selected_index == int(quiz["correct_option_index"])
+        feedback = await self._lesson_quiz_outcome_feedback(
+            session=session,
+            quiz=quiz,
+            selected_index=selected_index,
+            is_correct=is_correct,
+        )
         await self._record_quiz_attempt(session, quiz, selected_index, is_correct)
         state["active_quiz_id"] = None
         state["active_quiz_kind"] = None
@@ -425,7 +476,8 @@ class ConversationFlowMixin:
             )
             return self._session_response(
                 updated,
-                message=f"Not quite. {quiz['explanation']}\n\nReview the domain-level patterns again, then say `ready` for a new quiz question.",
+                message="Review the domain-level patterns again, then say `ready` for a new quiz question.",
+                quiz_outcome_feedback=feedback,
             )
 
         state["pending_domain_review"] = None
@@ -433,7 +485,8 @@ class ConversationFlowMixin:
             return await self._start_guided_skill(
                 session=session,
                 state=state,
-                intro=f"Correct. {quiz['explanation']}\n\nDomain assessment passed. Starting the next domain.",
+                intro="Domain assessment passed. Starting the next domain.",
+                quiz_outcome_feedback=feedback,
             )
 
         current_index = self._absolute_index_from_progress(state, session["roadmap_json"])
@@ -452,11 +505,18 @@ class ConversationFlowMixin:
         )
         return self._session_response(
             updated,
-            message=f"Correct. {quiz['explanation']}\n\nDomain assessment passed. {quiz_bundle['message']}",
+            message=f"Domain assessment passed. {quiz_bundle['message']}",
             pending_questions=[quiz_bundle["question"]],
+            quiz_outcome_feedback=feedback,
         )
 
-    async def _deliver_current_topic(self, session: dict[str, Any], *, intro: str | None = None) -> AgentSessionResponse:
+    async def _deliver_current_topic(
+        self,
+        session: dict[str, Any],
+        *,
+        intro: str | None = None,
+        quiz_outcome_feedback: QuizOutcomeFeedback | None = None,
+    ) -> AgentSessionResponse:
         state = session["state"]
         topic = self._current_topic(state)
         self._set_conversation_phase(state, phase="lecture", topic_id=topic.get("id"), awaiting_quiz_consent=False)
@@ -476,7 +536,11 @@ class ConversationFlowMixin:
         )
         prefix = f"{intro}\n\n" if intro else ""
         body = self._append_quiz_readiness_prompt(f"{prefix}{decision.message}".strip())
-        return self._session_response(updated, message=body.strip())
+        return self._session_response(
+            updated,
+            message=body.strip(),
+            quiz_outcome_feedback=quiz_outcome_feedback,
+        )
 
     async def _compact_memory(self, session: dict[str, Any], state: dict[str, Any]) -> None:
         events = await self.store.list_events(session["id"], limit=25)

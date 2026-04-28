@@ -59,9 +59,9 @@ __pycache__/
 *.pyo
 *.pyd
 venv/
-# Local virtualenvs (e.g. .venv, .venv312) — not application code
-.venv*/
 *.egg-info/
+.venv312/
+.venv/
 
 # Backend - Generated files
 backend/roadmaps/*.json

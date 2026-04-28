@@ -4,7 +4,15 @@ import { AgentDeleteResponse, AgentEvent, AgentProjectLatestSessionResponse, Age
 export type AgentTurnPayload = {
   user_id: string
   message?: string
-  input_mode?: 'text' | 'multiple_choice' | 'start_mode' | 'focus_confirm' | 'quiz_ready'
+  input_mode?:
+    | 'text'
+    | 'multiple_choice'
+    | 'start_mode'
+    | 'focus_confirm'
+    | 'quiz_ready'
+    | 'dungeon_start'
+    | 'dungeon_abort'
+    | 'dungeon_dismiss'
   question_id?: string
   selected_option_id?: string
   selected_option_index?: number
