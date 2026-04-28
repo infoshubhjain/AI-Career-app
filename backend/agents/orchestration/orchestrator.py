@@ -7,10 +7,12 @@ from agents.knowledge_agent import KnowledgeAgent
 from agents.memory_agent import MemoryCompactorAgent
 from agents.orchestration.conversation_flow import ConversationFlowMixin
 from agents.orchestration.core_state import CoreStateMixin
+from agents.orchestration.dungeon_flow import DungeonFlowMixin
 from agents.orchestration.placement_flow import PlacementFlowMixin
 from agents.orchestration.progression import ProgressionMixin
 from agents.orchestration.quiz_runtime import QuizRuntimeMixin
 from agents.orchestration.runtime_api import RuntimeApiMixin
+from agents.dungeon_agent import DungeonAgent
 from agents.quiz_agent import QuizAgent
 from agents.roadmap import RoadmapAgent
 from agents.tasker_agent import TaskerAgent
@@ -24,6 +26,7 @@ class LearningOrchestrator(
     PlacementFlowMixin,
     ProgressionMixin,
     QuizRuntimeMixin,
+    DungeonFlowMixin,
     ConversationFlowMixin,
     CoreStateMixin,
 ):
@@ -36,6 +39,7 @@ class LearningOrchestrator(
         self.knowledge_agent = KnowledgeAgent()
         self.memory_agent = MemoryCompactorAgent()
         self.quiz_agent = QuizAgent()
+        self.dungeon_agent = DungeonAgent()
         self.store = AgentSessionStore()
         self.bkt_engine = BKTEngine()
         self.knowledge_store = KnowledgeStateStore(self.store, self.bkt_engine)

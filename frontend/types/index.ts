@@ -55,6 +55,21 @@ export interface AgentAnswerOption {
     label: string
 }
 
+/** Returned after lesson quiz submits; show in overlay only, not duplicated in chat. */
+export interface QuizOutcomeFeedback {
+    is_correct: boolean
+    explanation_markdown: string
+}
+
+export interface DungeonTurnPayload {
+    narration: string
+    decision_state: 'continue' | 'success' | 'failure'
+    success_condition?: string | null
+    failure_condition?: string | null
+    scenario_title?: string | null
+    stakes_tier?: number | null
+}
+
 export interface AgentRoadmapSkill {
     id: string
     title: string
@@ -116,6 +131,14 @@ export interface AgentSessionState {
     pending_domain_review?: Record<string, unknown> | null
     active_quiz_id?: string | null
     active_quiz_kind?: string | null
+    /** Server-owned dungeon run (buffer memory, resolved flag). */
+    dungeon?: {
+        active?: boolean
+        resolved?: boolean
+        outcome?: 'success' | 'failure' | string
+        buffer?: Array<{ role?: string; text?: string; decision_state?: string }>
+        scenario_title?: string | null
+    }
     [key: string]: unknown
 }
 
@@ -129,6 +152,8 @@ export interface AgentSessionResponse {
     roadmap?: AgentRoadmap | null
     pending_questions: AgentQuestion[]
     state: AgentSessionState
+    quiz_outcome_feedback?: QuizOutcomeFeedback | null
+    dungeon_turn?: DungeonTurnPayload | null
 }
 
 export interface AgentSessionStateResponse {

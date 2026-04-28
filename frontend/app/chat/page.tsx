@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -24,12 +24,22 @@ import {
     sendAgentMessage,
     type AgentTurnPayload,
 } from '@/app/lib/agent-api'
+import {
+    getChatScrollStorageKey,
+    snapLectureThreadToBottom,
+    useChatScrollPersistence,
+} from '@/app/lib/chatScrollPersistence'
 import { AnimatedAIChatInput } from '@/components/ui/animated-ai-chat'
 import { DashboardSection } from './components/DashboardSection'
-import { ChatSurface } from './components/ChatSurface'
 import { MarkdownRenderer } from './components/MarkdownRenderer'
 import { ProgressionHeader } from './components/ProgressionHeader'
 import { ProjectSidebar } from './components/ProjectSidebar'
+import {
+    DungeonExperience,
+    dungeonBufferToMessages,
+    type DungeonTimelineMessage,
+    type DungeonUiPhase,
+} from './components/DungeonExperience'
 import { QuizOverlay } from './components/QuizOverlay'
 import { RoadmapRevealOverlay } from './components/RoadmapRevealOverlay'
 import { RuntimePanel } from './components/RuntimePanel'
@@ -42,6 +52,7 @@ import {
     AgentRoadmapSkill,
     AgentSessionResponse,
     AgentSessionStateResponse,
+    QuizOutcomeFeedback,
     UserProfile,
 } from '@/types'
 
@@ -107,14 +118,16 @@ function isInitialCalibrationStatus(status: string | null | undefined) {
 }
 
 function shouldAppendAssistantTimelineMessage(response: AgentSessionResponse) {
-    return !isInitialCalibrationStatus(response.status)
+    if (isInitialCalibrationStatus(response.status)) return false
+    const msg = typeof response.message === 'string' ? response.message.trim() : ''
+    return msg.length > 0
 }
 
 function statusLabel(status: string, busy: boolean) {
     if (busy) return { label: 'Thinking…', color: 'text-blue-500 dark:text-blue-400' }
     if (status.includes('quiz')) return { label: 'Quiz', color: 'text-amber-600 dark:text-amber-400' }
     if (status.includes('knowledge')) return { label: 'Calibrating', color: 'text-blue-600 dark:text-blue-400' }
-    if (status.includes('topic_followup')) return { label: 'Learning', color: 'text-emerald-600 dark:text-emerald-400' }
+    if (status.includes('topic_followup') || status === 'awaiting_topic_dungeon') return { label: 'Learning', color: 'text-emerald-600 dark:text-emerald-400' }
     if (status === 'completed') return { label: 'Complete', color: 'text-purple-600 dark:text-purple-400' }
     if (status === 'idle') return { label: 'Ready', color: 'text-neutral-500 dark:text-neutral-400' }
     return { label: status.replace(/_/g, ' '), color: 'text-neutral-500 dark:text-neutral-400' }
@@ -125,6 +138,7 @@ function inputPlaceholder(session: AgentSessionResponse | null, hasPendingQuiz: 
     if (hasPendingQuiz) return 'Answer the quiz above first…'
     if (session.status === 'awaiting_start_mode') return 'Choose how you want to begin…'
     if (session.status === 'awaiting_topic_followup') return 'Ask a follow-up, or scroll down and tap Start quiz when ready…'
+    if (session.status === 'awaiting_topic_dungeon') return 'What do you do?'
     if (session.status.includes('quiz')) return 'Answer the quiz prompt…'
     return 'Message your AI tutor…'
 }
@@ -137,6 +151,10 @@ function eventToTimelineMessage(event: AgentEvent): TimelineMessage | null {
     if (event.role === 'user' && event.payload?.input_mode === 'multiple_choice') return null
     if (event.role === 'user' && event.payload?.input_mode === 'focus_confirm') return null
     if (event.role === 'user' && event.payload?.input_mode === 'quiz_ready') return null
+    if (event.role === 'user' && event.payload?.input_mode === 'dungeon_start') return null
+    if (event.role === 'user' && event.payload?.input_mode === 'dungeon_abort') return null
+    if (event.role === 'user' && event.payload?.input_mode === 'dungeon_dismiss') return null
+    if (event.payload?.dungeon_transcript === true) return null
 
     const content =
         event.content ||
@@ -201,8 +219,17 @@ export default function ChatPage() {
     const [displayedQuestion, setDisplayedQuestion] = useState<AgentQuestion | null>(null)
     const [queuedQuestion, setQueuedQuestion] = useState<AgentQuestion | null>(null)
     const [quizDrafts, setQuizDrafts] = useState<Record<string, number | null>>({})
+    const [quizOutcomeFeedback, setQuizOutcomeFeedback] = useState<QuizOutcomeFeedback | null>(null)
+    const [outcomeAnchorQuestion, setOutcomeAnchorQuestion] = useState<AgentQuestion | null>(null)
+    const queuedQuestionRef = useRef<AgentQuestion | null>(null)
     const streamingTimerRef = useRef<number | null>(null)
-    const messagesEndRef = useRef<HTMLDivElement>(null)
+    const dungeonStreamTimerRef = useRef<number | null>(null)
+    const snapLectureAfterDungeonExitRef = useRef(false)
+    const [dungeonPhase, setDungeonPhase] = useState<DungeonUiPhase>('hidden')
+    const [dungeonMessages, setDungeonMessages] = useState<DungeonTimelineMessage[]>([])
+    const [dungeonInput, setDungeonInput] = useState('')
+    const [dungeonOutcome, setDungeonOutcome] = useState<'success' | 'failure' | null>(null)
+    const messagesScrollRef = useRef<HTMLDivElement>(null)
     const initializationStartedRef = useRef(false)
     const sessionCreationInFlightRef = useRef(false)
     const lastSeenTopicKeyRef = useRef<string | null>(null)
@@ -215,13 +242,16 @@ export default function ChatPage() {
     const pendingQuestion = useMemo(() => session?.pending_questions?.[0] || null, [session])
     const activeQuestion = displayedQuestion || pendingQuestion
     const selectedIndex = activeQuestion ? (quizDrafts[activeQuestion.id] ?? null) : null
-    const nextReady = Boolean(queuedQuestion && activeQuestion && queuedQuestion.id !== activeQuestion.id)
+    const nextReady = Boolean(queuedQuestion && activeQuestion && queuedQuestion.id !== activeQuestion.id && !quizOutcomeFeedback)
     const isStartModeOverlayOpen = Boolean(roadmapRevealLabel) && session?.status === 'awaiting_start_mode'
     const pendingQuizKey = useMemo(
         () => (session?.session_id && pendingQuestion?.id ? `${session.session_id}:${pendingQuestion.id}` : null),
         [pendingQuestion?.id, session?.session_id]
     )
     const isQuizOverlayOpen = Boolean(pendingQuestion) && pendingQuizKey !== dismissedQuizKey
+    const quizOverlayQuestion = outcomeAnchorQuestion ?? activeQuestion
+    const showQuizOverlay = Boolean(quizOverlayQuestion && (quizOutcomeFeedback || isQuizOverlayOpen))
+    const overlaySelectedIndex = quizOverlayQuestion ? (quizDrafts[quizOverlayQuestion.id] ?? null) : null
     const isEntryMode = !session && !selectedProjectId
     const isLearningMode = Boolean(session)
     const totalDomains = session?.roadmap?.domains?.length || 0
@@ -235,15 +265,46 @@ export default function ChatPage() {
     const awaitingQuizConsent = Boolean(
         (session?.state?.conversation_state as { awaiting_quiz_consent?: boolean } | undefined)?.awaiting_quiz_consent
     )
-    const showQuizReadyButton = Boolean(
+    const isDungeonActive = session?.status === 'awaiting_topic_dungeon'
+    const dungeonResolved = Boolean(session?.state?.dungeon?.resolved)
+    const showDungeonButton = Boolean(
         session &&
+            dungeonPhase === 'hidden' &&
             !pendingQuestion &&
             !isStartModeOverlayOpen &&
             !isFocusConfirm &&
+            session.status === 'awaiting_topic_followup' &&
+            awaitingQuizConsent
+    )
+    const showQuizReadyButton = Boolean(
+        session &&
+            dungeonPhase === 'hidden' &&
+            !pendingQuestion &&
+            !isStartModeOverlayOpen &&
+            !isFocusConfirm &&
+            !isDungeonActive &&
             ((session.status === 'awaiting_topic_followup' && awaitingQuizConsent) || session.status === 'reviewing_domain')
     )
     const quizReadyButtonLabel =
         session?.status === 'reviewing_domain' ? 'Start module quiz' : 'Start task quiz'
+
+    const chatScrollStorageKey = useMemo(
+        () => getChatScrollStorageKey({ userId: user?.id, sessionId: session?.session_id, projectId: selectedProjectId }),
+        [user?.id, session?.session_id, selectedProjectId]
+    )
+    useChatScrollPersistence(messagesScrollRef, {
+        storageKey: chatScrollStorageKey,
+        messagesLength: messages.length,
+        busy,
+        sessionActive: Boolean(session?.session_id),
+    })
+
+    useLayoutEffect(() => {
+        if (dungeonPhase !== 'hidden') return
+        if (!snapLectureAfterDungeonExitRef.current) return
+        snapLectureAfterDungeonExitRef.current = false
+        snapLectureThreadToBottom(messagesScrollRef, chatScrollStorageKey)
+    }, [dungeonPhase, messages.length, chatScrollStorageKey])
 
     useEffect(() => {
         if (user?.id) {
@@ -258,8 +319,8 @@ export default function ChatPage() {
     }, [user?.id])
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages])
+        queuedQuestionRef.current = queuedQuestion
+    }, [queuedQuestion])
 
     useEffect(() => {
         if (!pendingQuestion) {
@@ -366,7 +427,7 @@ export default function ChatPage() {
 
     async function loadProject(projectId: string) {
         if (!user?.id) return
-        setBusy(true); setError(null); setSelectedProjectId(projectId)
+        setBusy(true); setError(null); setSelectedProjectId(projectId); setQuizOutcomeFeedback(null); setOutcomeAnchorQuestion(null)
         const { data: projectData, error: projectError } = await getProjectLatestSession(projectId, user.id)
         if (projectError || !projectData) { setError(projectError || 'Failed to load project'); setBusy(false); return }
         const latestSession = projectData.session
@@ -376,6 +437,19 @@ export default function ChatPage() {
         const hydratedSession = hydrateSession(latestSession)
         setSession(hydratedSession)
         setMessages(eventData.map(eventToTimelineMessage).filter((m): m is TimelineMessage => Boolean(m)))
+        if (hydratedSession.status === 'awaiting_topic_dungeon') {
+            const d = hydratedSession.state.dungeon
+            setDungeonMessages(dungeonBufferToMessages(d?.buffer))
+            const o = d?.outcome === 'success' ? 'success' : d?.outcome === 'failure' ? 'failure' : null
+            setDungeonOutcome(o)
+            setDungeonPhase(d?.resolved ? 'outcome' : 'active')
+            setDungeonInput('')
+        } else {
+            setDungeonPhase('hidden')
+            setDungeonMessages([])
+            setDungeonOutcome(null)
+            setDungeonInput('')
+        }
         setRoadmapRevealLabel(
             hydratedSession.status === 'awaiting_start_mode'
                 ? toRoadmapLabel(hydratedSession.roadmap?.normalized_title || hydratedSession.roadmap?.query || projectData.project.goal)
@@ -432,34 +506,57 @@ export default function ChatPage() {
         }
     }
 
-    async function continueSession(payload: AgentTurnPayload) {
-        if (!session || !user?.id) return
-        setBusy(true); setError(null)
+    async function continueSession(
+        payload: AgentTurnPayload,
+        postStream?: (response: AgentSessionResponse) => void
+    ) {
+        if (!session || !user?.id) return null
+        setBusy(true)
+        setError(null)
         shouldRevealNextTaskRef.current = true
         logPipeline('turn_send', { sessionId: session.session_id, status: session.status, payload })
         const { data, error: requestError } = await sendAgentMessage(session.session_id, payload)
-        if (requestError || !data) { setError(requestError || 'Failed to send message'); setBusy(false); return null }
+        if (requestError || !data) {
+            setError(requestError || 'Failed to send message')
+            setBusy(false)
+            return null
+        }
         logPipeline('turn_response', data)
         const { data: syncedSession } = await getAgentSession(data.session_id)
-        setSession(syncedSession ? hydrateSession(syncedSession) : data)
+        const nextSession = syncedSession ? hydrateSession(syncedSession) : data
+        setSession(nextSession)
         setSelectedProjectId(data.project_id || selectedProjectId)
-        if (shouldAppendAssistantTimelineMessage(data)) {
-            const text =
-                typeof data.message === 'string' ? data.message : String(data.message ?? '')
-            streamAssistantMessage(text)
+
+        const streamToDungeon = nextSession.status === 'awaiting_topic_dungeon' && payload.input_mode !== 'dungeon_dismiss'
+        const shouldStream =
+            shouldAppendAssistantTimelineMessage(data) && Boolean((typeof data.message === 'string' ? data.message : '').trim())
+
+        const finishTurn = async () => {
+            await refreshProjects(data.project_id || selectedProjectId || undefined)
+            setBusy(false)
+            if (profile) {
+                const newXP = profile.xp + 10
+                setProfile(prev => (prev ? { ...prev, xp: newXP } : null))
+                const supabase = createClient()
+                if (supabase) await supabase.from('profiles').update({ xp: newXP }).eq('id', user.id)
+            }
+            postStream?.(data)
         }
-        await refreshProjects(data.project_id || selectedProjectId || undefined)
-        setBusy(false)
-        if (profile) {
-            const newXP = profile.xp + 10
-            setProfile(prev => (prev ? { ...prev, xp: newXP } : null))
-            const supabase = createClient()
-            if (supabase) await supabase.from('profiles').update({ xp: newXP }).eq('id', user.id)
+
+        if (shouldStream) {
+            const text = typeof data.message === 'string' ? data.message : String(data.message ?? '')
+            if (streamToDungeon) {
+                streamDungeonAssistantMessage(text, finishTurn)
+            } else {
+                streamAssistantMessage(text, finishTurn)
+            }
+        } else {
+            void finishTurn()
         }
         return data
     }
 
-    function streamAssistantMessage(content: string) {
+    function streamAssistantMessage(content: string, onComplete?: () => void | Promise<void>) {
         if (streamingTimerRef.current) {
             window.clearInterval(streamingTimerRef.current)
         }
@@ -469,7 +566,7 @@ export default function ChatPage() {
             ...prev,
             {
                 id: messageId,
-                role: 'assistant',
+                role: 'assistant' as const,
                 content: '',
                 createdAt,
             },
@@ -491,11 +588,54 @@ export default function ChatPage() {
             if (index >= content.length) {
                 if (streamingTimerRef.current) {
                     window.clearInterval(streamingTimerRef.current)
+                    streamingTimerRef.current = null
                 }
+                void Promise.resolve(onComplete?.())
             }
         }
 
         streamingTimerRef.current = window.setInterval(reveal, 18)
+    }
+
+    function streamDungeonAssistantMessage(content: string, onComplete?: () => void | Promise<void>) {
+        if (dungeonStreamTimerRef.current) {
+            window.clearInterval(dungeonStreamTimerRef.current)
+        }
+        const messageId = `dungeon-asst-${Date.now()}`
+        const createdAt = new Date().toISOString()
+        setDungeonMessages(prev => [
+            ...prev,
+            {
+                id: messageId,
+                role: 'assistant' as const,
+                content: '',
+                createdAt,
+            },
+        ])
+
+        let index = 0
+        const reveal = () => {
+            index = Math.min(index + 6, content.length)
+            setDungeonMessages(prev =>
+                prev.map(m =>
+                    m.id === messageId
+                        ? {
+                              ...m,
+                              content: content.slice(0, index),
+                          }
+                        : m
+                )
+            )
+            if (index >= content.length) {
+                if (dungeonStreamTimerRef.current) {
+                    window.clearInterval(dungeonStreamTimerRef.current)
+                    dungeonStreamTimerRef.current = null
+                }
+                void Promise.resolve(onComplete?.())
+            }
+        }
+
+        dungeonStreamTimerRef.current = window.setInterval(reveal, 18)
     }
 
     async function handleSubmit(e: React.FormEvent) {
@@ -503,9 +643,43 @@ export default function ChatPage() {
         const trimmed = input.trim()
         if (!trimmed || busy || !user?.id) return
         setInput('')
-        if (!session) { await startSession(trimmed); return }
-        setMessages(prev => [...prev, { id: `user-${Date.now()}`, role: 'user', content: trimmed, createdAt: new Date().toISOString(), variant: 'standard' }])
+        if (!session) {
+            await startSession(trimmed)
+            return
+        }
+        if (session.status === 'awaiting_topic_dungeon' && !session.state.dungeon?.resolved) {
+            return
+        }
+        setMessages(prev => [
+            ...prev,
+            {
+                id: `user-${Date.now()}`,
+                role: 'user',
+                content: trimmed,
+                createdAt: new Date().toISOString(),
+                variant: 'standard',
+            },
+        ])
         await continueSession({ user_id: user.id, message: trimmed, input_mode: 'text' })
+    }
+
+    async function handleDungeonSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        const trimmed = dungeonInput.trim()
+        if (!trimmed || busy || !user?.id || !session) return
+        if (session.state.dungeon?.resolved) return
+        setDungeonInput('')
+        setDungeonMessages(prev => [
+            ...prev,
+            { id: `dungeon-user-${Date.now()}`, role: 'user', content: trimmed, createdAt: new Date().toISOString() },
+        ])
+        await continueSession({ user_id: user.id, message: trimmed, input_mode: 'text' }, response => {
+            const d = response.dungeon_turn?.decision_state
+            if (d === 'success' || d === 'failure') {
+                setDungeonOutcome(d)
+                setDungeonPhase('outcome')
+            }
+        })
     }
 
     function handleQuizChoice(optionIndex: number) {
@@ -529,10 +703,25 @@ export default function ChatPage() {
             selected_option_index: selectedIndex,
         })
         setQuizSubmitting(false)
+        const fb = response?.quiz_outcome_feedback ?? null
+        setQuizOutcomeFeedback(fb)
+        if (fb) setOutcomeAnchorQuestion(activeQuestion)
+        else setOutcomeAnchorQuestion(null)
         if (response?.pending_questions?.length) {
             setQueuedQuestion(response.pending_questions[0])
         } else {
             setQueuedQuestion(null)
+        }
+    }
+
+    function handleQuizFeedbackContinue() {
+        setQuizOutcomeFeedback(null)
+        setOutcomeAnchorQuestion(null)
+        const q = queuedQuestionRef.current
+        if (q) {
+            setDisplayedQuestion(q)
+            setQueuedQuestion(null)
+            setQuizDrafts(prev => ({ ...prev, [q.id]: null }))
         }
     }
 
@@ -562,15 +751,77 @@ export default function ChatPage() {
         await continueSession({ user_id: user.id, message: 'ready', input_mode: 'text' })
     }
 
-    function dismissQuizOverlay() { if (!pendingQuizKey || busy || quizSubmitting) return; setDismissedQuizKey(pendingQuizKey) }
+    async function handleDungeonStart() {
+        if (!session || !user?.id || busy || pendingQuestion) return
+        setDungeonPhase('entering')
+        setDungeonMessages([])
+        setDungeonInput('')
+        setDungeonOutcome(null)
+        const res = await continueSession(
+            { user_id: user.id, message: undefined, input_mode: 'dungeon_start' },
+            response => {
+                const d = response.dungeon_turn?.decision_state
+                if (d === 'success' || d === 'failure') {
+                    setDungeonOutcome(d)
+                    setDungeonPhase('outcome')
+                } else {
+                    setDungeonPhase('active')
+                }
+            }
+        )
+        if (!res) setDungeonPhase('hidden')
+    }
+
+    async function handleDungeonAbort() {
+        if (!session || !user?.id || busy) return
+        await continueSession({ user_id: user.id, message: undefined, input_mode: 'dungeon_abort' }, () => {
+            snapLectureAfterDungeonExitRef.current = true
+            setDungeonPhase('hidden')
+            setDungeonMessages([])
+            setDungeonOutcome(null)
+            setDungeonInput('')
+        })
+    }
+
+    async function handleDungeonDismissFromOutcome() {
+        if (!session || !user?.id || busy) return
+        setDungeonPhase('exiting')
+        await new Promise<void>(r => {
+            window.setTimeout(r, 900)
+        })
+        const res = await continueSession(
+            { user_id: user.id, message: undefined, input_mode: 'dungeon_dismiss' },
+            () => {
+                snapLectureAfterDungeonExitRef.current = true
+                setDungeonMessages([])
+                setDungeonOutcome(null)
+                setDungeonInput('')
+                setDungeonPhase('hidden')
+            }
+        )
+        if (!res) setDungeonPhase('outcome')
+    }
+
+    function dismissQuizOverlay() {
+        if (busy || quizSubmitting) return
+        setQuizOutcomeFeedback(null)
+        setOutcomeAnchorQuestion(null)
+        if (pendingQuizKey) setDismissedQuizKey(pendingQuizKey)
+    }
     function reopenQuizOverlay() { setDismissedQuizKey(null) }
 
     function beginNewProject() {
         setSelectedProjectId(null); setSession(null); setMessages([])
+        setQuizOutcomeFeedback(null)
+        setOutcomeAnchorQuestion(null)
         setInput(''); setError(null); setRoadmapCreationQuery('')
         setIsRoadmapLoading(false); setRoadmapRevealLabel(null); setTaskReveal(null)
         lastSeenTopicKeyRef.current = null; shouldRevealNextTaskRef.current = false
         setIsSidebarOpen(false)
+        setDungeonPhase('hidden')
+        setDungeonMessages([])
+        setDungeonInput('')
+        setDungeonOutcome(null)
     }
 
     if (loading) {
@@ -729,29 +980,41 @@ export default function ChatPage() {
                     </div>
                 </header>
 
-                {/* Messages area */}
-                <div className="flex-1 overflow-y-auto min-h-0">
-                    <RoadmapCreationCanvas visible={isRoadmapLoading} ambition={roadmapCreationQuery} />
+                {/* Messages area — lecture vs dungeon (immersive handoff) */}
+                <div ref={messagesScrollRef} className="min-h-0 flex-1 flex flex-col overflow-hidden">
+                    {dungeonPhase === 'hidden' && (
+                        <RoadmapCreationCanvas visible={isRoadmapLoading} ambition={roadmapCreationQuery} />
+                    )}
 
-                    {messages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center px-6 py-16 space-y-5 max-w-lg mx-auto">
-                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 flex items-center justify-center">
-                                <Radar className="w-8 h-8 text-blue-500/70" />
-                            </div>
-                            <div className="space-y-2">
-                                <h2 className="text-xl font-bold text-neutral-900 dark:text-white">What's your career goal?</h2>
-                                <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                                    Describe what you want to become or build. Your AI tutor will generate a personalized roadmap, calibrate your level, and guide you step by step.
-                                </p>
-                            </div>
-                            {projects.length > 0 && (
-                                <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                                    Or pick a previous project from the sidebar →
-                                </p>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="max-w-3xl mx-auto px-4 py-6 space-y-6 text-[15px]">
+                    <AnimatePresence mode="wait">
+                        {dungeonPhase === 'hidden' ? (
+                            <motion.div
+                                key="lecture-thread"
+                                className="min-h-0 flex-1 overflow-y-auto"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0, filter: 'blur(10px)' }}
+                                transition={{ duration: 0.35 }}
+                            >
+                                {messages.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-center px-6 py-16 space-y-5 max-w-lg mx-auto">
+                                        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 flex items-center justify-center">
+                                            <Radar className="w-8 h-8 text-blue-500/70" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <h2 className="text-xl font-bold text-neutral-900 dark:text-white">What's your career goal?</h2>
+                                            <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                                                Describe what you want to become or build. Your AI tutor will generate a personalized roadmap, calibrate your level, and guide you step by step.
+                                            </p>
+                                        </div>
+                                        {projects.length > 0 && (
+                                            <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                                                Or pick a previous project from the sidebar →
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6 text-[15px]">
                             {messages.map((message, index) => (
                                 <motion.div
                                     key={message.id}
@@ -814,7 +1077,7 @@ export default function ChatPage() {
                                 </motion.div>
                             )}
 
-                            {showQuizReadyButton && (
+                            {(showDungeonButton || showQuizReadyButton) && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -825,24 +1088,67 @@ export default function ChatPage() {
                                     </div>
                                     <div className="w-full rounded-2xl px-4 py-3 text-neutral-900 dark:text-white">
                                         <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-3">
-                                            When you are ready, start the quiz from here. New messages will appear above; scroll up anytime for follow-ups.
+                                            {showDungeonButton
+                                                ? 'Try an immersive practice scene, or start the quiz when you are ready. New messages appear above.'
+                                                : 'When you are ready, start the quiz from here. New messages will appear above; scroll up anytime for follow-ups.'}
                                         </p>
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleQuizReadyFromButton()}
-                                            disabled={busy}
-                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-sm py-2.5 px-4 transition-colors"
-                                        >
-                                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
-                                            {quizReadyButtonLabel}
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {showDungeonButton && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleDungeonStart()}
+                                                    disabled={busy}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-500/40 bg-violet-600/15 hover:bg-violet-600/25 dark:border-violet-400/35 dark:bg-violet-950/60 dark:hover:bg-violet-900/50 disabled:opacity-50 disabled:pointer-events-none text-violet-900 dark:text-violet-100 font-semibold text-sm py-2.5 px-4 transition-colors"
+                                                >
+                                                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                                                    Dungeon
+                                                </button>
+                                            )}
+                                            {showQuizReadyButton && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleQuizReadyFromButton()}
+                                                    disabled={busy}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:pointer-events-none text-white font-semibold text-sm py-2.5 px-4 transition-colors"
+                                                >
+                                                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+                                                    {quizReadyButtonLabel}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </motion.div>
                             )}
 
-                            <div ref={messagesEndRef} />
-                        </div>
-                    )}
+                                    </div>
+                                )}
+                            </motion.div>
+                        ) : (
+                            <motion.div
+                                key="dungeon-thread"
+                                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-2 py-2 sm:px-4"
+                                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.94, y: 8 }}
+                                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                            >
+                                <DungeonExperience
+                                    phase={dungeonPhase}
+                                    scenarioTitle={session?.state?.dungeon?.scenario_title ?? null}
+                                    messages={dungeonMessages}
+                                    busy={busy}
+                                    input={dungeonInput}
+                                    onInputChange={setDungeonInput}
+                                    onSubmit={handleDungeonSubmit}
+                                    onAbort={() => void handleDungeonAbort()}
+                                    showAbort={!dungeonResolved && dungeonPhase === 'active'}
+                                    outcome={dungeonOutcome}
+                                    onDismiss={() => void handleDungeonDismissFromOutcome()}
+                                    theme="chat"
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
                 {/* Input area */}
@@ -870,7 +1176,7 @@ export default function ChatPage() {
                             onChange={setInput}
                             onSubmit={handleSubmit}
                             placeholder={inputPlaceholder(session, Boolean(pendingQuestion))}
-                            disabled={isStartModeOverlayOpen || Boolean(pendingQuestion)}
+                            disabled={isStartModeOverlayOpen || Boolean(pendingQuestion) || dungeonPhase !== 'hidden'}
                             busy={busy}
                         />
                         <p className="mt-2 text-center text-[11px] text-neutral-400 dark:text-neutral-600">
@@ -900,17 +1206,19 @@ export default function ChatPage() {
                 onComplete={isFocusConfirm ? handleFocusConfirm : () => setTaskReveal(null)}
             />
 
-            {activeQuestion && isQuizOverlayOpen && (
+            {showQuizOverlay && quizOverlayQuestion && (
                 <QuizOverlay
-                    question={activeQuestion}
+                    question={quizOverlayQuestion}
                     busy={busy}
                     submitting={quizSubmitting}
-                    selectedIndex={selectedIndex}
+                    selectedIndex={overlaySelectedIndex}
                     nextReady={nextReady}
                     error={error}
+                    outcomeFeedback={quizOutcomeFeedback}
                     onSelectIndex={handleQuizChoice}
-                    onSubmit={handleQuizSubmit}
+                    onSubmit={() => void handleQuizSubmit()}
                     onNext={handleNextQuestion}
+                    onOutcomeContinue={handleQuizFeedbackContinue}
                     onClose={dismissQuizOverlay}
                 />
             )}
